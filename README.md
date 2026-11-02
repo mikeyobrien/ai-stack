@@ -27,7 +27,10 @@ ai-stack/
 └── install.sh
 ```
 
-`.agents/skills/` holds skills scoped to this checkout only.
+`.agents/skills/` holds skills scoped to this checkout only. The portable
+`meta` profile installs `dsh-backlog`, `dsh-principles`, and `mov-skills`;
+`dsh-client-sidebar-editor` is opt-in — add it to `dsh/profile/package.json`
+(dependencies and bundles) before installing.
 
 ## Install
 
