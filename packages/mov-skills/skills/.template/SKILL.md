@@ -5,17 +5,20 @@ description: {description}
 
 # {title}
 
-## When to use
+## Why
 
-{description}
+State the problem this skill exists to solve and the failure it prevents. Keep it to a short paragraph.
 
-## Workflow
+## What
 
-1. Describe the first step.
+State the outcome the skill produces, what it covers, and what it deliberately leaves out.
 
-2. Describe the next step.
+## How
 
-## Notes
+1. Write the first move as an imperative step.
+2. Continue with the next move; make each step independently checkable.
+3. End with how to verify the result.
 
-- Keep instructions imperative and specific.
-- Put long reference material in `references/` and point at it here.
+### Gotchas
+
+- List failure modes, edge cases, and things that look right but are not.
