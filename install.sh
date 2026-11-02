@@ -65,6 +65,15 @@ NODE
   say "  dsh --profile $PROFILE"
 }
 
+link_pi_skill() {
+  local dest="$PI_AGENT_DIR/skills/$1"
+  if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+    say "pi: leaving existing $dest in place"
+    return
+  fi
+  ln -sfn "$2" "$dest"
+}
+
 install_pi() {
   command -v npm >/dev/null 2>&1 || die "npm is not on PATH"
 
@@ -82,17 +91,22 @@ install_pi() {
     && cp "$REPO/pi/npm/package-lock.json" "$PI_AGENT_DIR/npm/package-lock.json"
   ( cd "$PI_AGENT_DIR/npm" && npm install --no-audit --no-fund )
 
-  # Share the mov-skills skills with pi. Existing real directories win.
-  local skill name dest
+  # Share the mov-skills skills with pi, mirroring the provider: a folder
+  # carrying its own SKILL.md, or one level of children named after the child
+  # (internal/mov-mode -> mov-mode), so flows keep their runner. Existing real
+  # directories win.
+  local skill child
   for skill in "$REPO"/skills/*/; do
-    [ -f "${skill}SKILL.md" ] || continue
-    name="$(basename "${skill%/}")"
-    dest="$PI_AGENT_DIR/skills/$name"
-    if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-      say "pi: leaving existing $dest in place"
+    case "$(basename "${skill%/}")" in .*) continue ;; esac
+    if [ -f "${skill}SKILL.md" ]; then
+      link_pi_skill "$(basename "${skill%/}")" "${skill%/}"
       continue
     fi
-    ln -sfn "${skill%/}" "$dest"
+    for child in "${skill}"*/; do
+      case "$(basename "${child%/}")" in .*) continue ;; esac
+      [ -f "${child}SKILL.md" ] || continue
+      link_pi_skill "$(basename "${child%/}")" "${child%/}"
+    done
   done
 
   say "pi configuration -> $PI_AGENT_DIR"
