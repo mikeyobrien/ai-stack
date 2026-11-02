@@ -1,7 +1,6 @@
 # Flows
 
-Flows are data: a name and an ordered vector of skill names. Run them with the
-`mov-mode` runner.
+A name and an ordered vector of skill names.
 
 ```yaml
 align-work-item: [prior-art, first-principles, write-one-pager]
