@@ -1,0 +1,7 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "dependencies": {
+    "@ollama/pi-web-search": "^0.0.5"
+  }
+}

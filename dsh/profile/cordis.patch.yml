@@ -1,0 +1,59 @@
+# Portable DSH profile for the ai-stack repo.
+#
+# Machine-specific values come from the environment:
+#   SPARKS_API_KEY       API key for the sparks provider (required)
+#   DSH_SPARKS_BASE_URL  OpenAI-compatible endpoint (default: http://127.0.0.1:8888/v1)
+#
+# Boot it with: dsh --profile meta
+- id: llm-pi-ai
+  config:
+    providers:
+      sparks:
+        displayName: Sparks
+        apiKeyEnv: SPARKS_API_KEY
+        api: openai-completions
+        baseURL: !!js process.env.DSH_SPARKS_BASE_URL ?? 'http://127.0.0.1:8888/v1'
+        compat:
+          supportsDeveloperRole: false
+          maxTokensField: max_tokens
+        models:
+          - id: deepseek-v4.1-flash
+            name: DeepSeek V4.1 Flash
+            contextWindow: 1048576
+            maxTokens: 32768
+            input: [ text ]
+
+# Keep the --trusted-host values from the command line; long-lived cookie so
+# the installed phone PWA stays signed in.
+- id: connection
+  config:
+    trustedHosts: !!js ctx.webStartup.trustedHosts
+    cookieMaxAgeDays: 365
+
+# New sessions default to the sparks model instead of DeepSeek's API.
+- id: agent-default-model
+  config:
+    provider: sparks
+    model: deepseek-v4.1-flash
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
+- id: ui-theme
+  name: "@deepseek-ai/dsh-client-ui-theme"
+  config:
+    fontSize: 12
+- id: ui-chat
+  name: "@deepseek-ai/dsh-client-ui-chat"
+  config:
+    transcriptView: standard
+- id: web
+  name: "@deepseek-ai/dsh-web"
+  config:
+    searchProvider: deepseek-search-api
+    fetchProvider: deepseek-fetch-api
+- id: speech-to-text
+  name: "@deepseek-ai/dsh-experimental-speech-to-text"
+  config:
+    defaultProvider: sensevoice-local
+    language: en

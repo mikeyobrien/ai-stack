@@ -1,0 +1,5 @@
+# Registers the mov-skills provider. Skills are discovered from ./skills/ inside
+# this package; add or edit folders there and they appear in the session catalog.
+- insert:
+    - id: mov-skills
+      name: '@local/mov-skills'

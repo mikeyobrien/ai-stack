@@ -1,0 +1,4 @@
+packages:
+  - packages/*
+# The harness packages are peers of the running DSH installation, never local copies.
+autoInstallPeers: false

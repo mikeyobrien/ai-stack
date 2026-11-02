@@ -1,0 +1,30 @@
+{
+  "name": "@local/mov-skills",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal agent skills packaged as a DSH plugin: every SKILL.md folder under skills/ joins the session skill catalog.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./skills/*": "./skills/*"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "skills/**",
+    "scripts/**"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "yaml": "^2.4.2"
+  }
+}

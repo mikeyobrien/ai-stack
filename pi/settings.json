@@ -1,0 +1,9 @@
+{
+  "defaultModel": "glm-5.3-flash:cloud",
+  "defaultProvider": "ollama",
+  "lastChangelogVersion": "1.4.0",
+  "theme": "omarchy-system",
+  "packages": [
+    "npm:@ollama/pi-web-search"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MOV 技能",
+    "description": "把你的个人智能体技能打包为 DSH 插件：插件 skills/ 目录下每个包含 SKILL.md 的文件夹都会加入会话的技能目录。"
+  }
+}

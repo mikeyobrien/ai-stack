@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.env
+.test-home/
+.test-pi/
+
+# Local-only working notes
+packages/mov-skills/VISION.md

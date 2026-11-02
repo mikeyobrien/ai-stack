@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MOV Skills",
+    "description": "Your personal agent skills as a DSH plugin: every folder under the plugin's skills/ directory that contains a SKILL.md joins the session skill catalog."
+  }
+}

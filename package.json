@@ -1,0 +1,10 @@
+{
+  "name": "ai-stack",
+  "private": true,
+  "packageManager": "pnpm@10.34.8",
+  "scripts": {
+    "install:dsh": "./install.sh dsh",
+    "install:pi": "./install.sh pi",
+    "check": "pnpm -r exec node --check index.js"
+  }
+}
