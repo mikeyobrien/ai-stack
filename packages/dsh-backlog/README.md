@@ -14,7 +14,7 @@ Capture is independent of the main composer and remains available while the agen
 
 ## Install
 
-This package belongs to the ai-tools npm workspace (currently the ai-stack checkout). From that workspace:
+This package belongs to the ai-stack npm workspace. From that workspace:
 
 ```sh
 pnpm install

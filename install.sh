@@ -44,6 +44,19 @@ NODE
   say "installing workspace dependencies in $REPO"
   ( cd "$REPO" && pnpm install --config.confirmModulesPurge=false )
 
+  # The plugins import @deepseek-ai/* without declaring it, so those imports
+  # resolve only through the harness they run inside. A node_modules one level
+  # above the checkout supplies exactly the installed versions; without it a
+  # plugin loads from the profile but fails the moment Node resolves its import.
+  local shared="${DSH_PACKAGES:-$HOME/.local/share/dsh/node_modules}"
+  local seam="$(dirname "$REPO")/node_modules"
+  if [ -d "$shared" ]; then
+    [ -L "$seam" ] || ln -sfn "$shared" "$seam"
+    say "plugin resolution: $seam -> $shared"
+  else
+    say "warning: $shared is missing; repo plugins will not resolve @deepseek-ai/*"
+  fi
+
   dsh plugin --profile "$PROFILE" install
 
   say "DSH profile '$PROFILE' -> $target"

@@ -44,7 +44,7 @@ dependency wherever the checkout lives.
 | Repo | Machine |
 | --- | --- |
 | `dsh/profile/*` | `$DSH_HOME/profiles/$PROFILE/` |
-| `packages/mov-skills` | linked into that profile |
+| `packages/*` | linked into that profile |
 | `skills/*` | your user-level skills; also symlinked into `~/.pi/agent/skills/` |
 | `pi/settings.json`, `models.json`, `AGENTS.md` | `~/.pi/agent/` |
 | `pi/npm/package.json` | `~/.pi/agent/npm/`, then `npm install` |
@@ -74,6 +74,21 @@ global rules reach Claude too.
 - **pi extension**: drop a `*.ts` file in `pi/extensions/` and run
   `./install.sh pi`; npm-based extensions go in `pi/npm/package.json` plus
   `settings.json`'s `packages` list.
+
+## Plugin resolution
+
+The plugin packages import `@deepseek-ai/*` without declaring it, so those
+imports resolve through the harness the plugins run inside, not through this
+workspace's own dependencies. `install.sh` links the install's `node_modules`
+one level above the checkout to supply exactly the installed versions:
+
+```text
+~/dsh-workspace/node_modules -> ~/.local/share/dsh/node_modules
+```
+
+That link is load-bearing, not leftovers: remove it and a plugin still loads
+from the profile, then fails the moment Node resolves its import. Override the
+target with `DSH_PACKAGES` when the harness lives elsewhere.
 
 ## Experimental capabilities
 

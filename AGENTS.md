@@ -1,4 +1,4 @@
-Put all new dsh plugins in the ai-tools npm workspace repo.
+Put all new dsh plugins in the ai-stack npm workspace repo.
 
 Prefer agentic over deterministic steps when performing validations.
 
