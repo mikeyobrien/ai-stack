@@ -6,6 +6,7 @@ node_modules/
 
 # Local-only working notes
 packages/mov-skills/VISION.md
+research/
 
 # Flow run artifacts
 .agents/scratch/

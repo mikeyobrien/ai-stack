@@ -1,6 +1,13 @@
 {
   "name": "ai-stack",
   "private": true,
+  "description": "DeepSeek Harness plugins, agent skills, and pi configuration.",
+  "license": "MIT",
+  "author": "Mikey O'Brien <m@mobrienv.dev>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikeyobrien/ai-stack.git"
+  },
   "packageManager": "pnpm@10.34.8",
   "scripts": {
     "install:dsh": "./install.sh dsh",

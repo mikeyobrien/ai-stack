@@ -112,7 +112,7 @@ that should travel with the plugin itself.
 
 ```bash
 # install (approval required in the Harness)
-# plugin_manager → install_bundle → target: /home/mobrienv/dsh-workspace/mov-skills
+# plugin_manager → install_bundle → target: <checkout>/packages/mov-skills
 ```
 
 The plugin row id is `mov-skills` and the package is `@local/mov-skills`. Local

@@ -1,7 +1,8 @@
 # ai-stack
 
 Personal AI tooling in one repo: DeepSeek Harness plugins, agent skills, and pi
-configuration/extensions.
+configuration/extensions. Published as-is — tuned for one machine, not a
+supported product.
 
 ```text
 ai-stack/
@@ -9,6 +10,8 @@ ai-stack/
 ├── docs/                        # experimental capability runbook
 ├── packages/                    # DSH plugins (pnpm workspace)
 │   ├── dsh-backlog/             # park ideas; explicitly pull into a draft
+│   ├── dsh-client-sidebar-editor/  # opt-in sidebar file editor
+│   ├── dsh-principles/          # principles as a prompt section + tools
 │   └── mov-skills/              # skills provider; serves ../skills/
 ├── pi/                          # pi settings, models, instructions, extensions
 │   ├── settings.json
@@ -17,8 +20,14 @@ ai-stack/
 │   ├── npm/                     # pi extension packages
 │   ├── themes/
 │   └── extensions/              # user pi extensions
+├── skills/                      # user-level skills, distributed here
+│   ├── delegate/  first-principles/  html-report/  improve-readability/
+│   ├── one-pager/  prior-art/  research/  ui-ux-pass/  verified-delivery/
+│   └── internal/                # flows composed from the others
 └── install.sh
 ```
+
+`.agents/skills/` holds skills scoped to this checkout only.
 
 ## Install
 
@@ -111,17 +120,15 @@ catalog — for example, an unquoted colon.
 
 ## Sharing
 
-Push the repo, clone it on the other machine, set the two env vars, run
-`./install.sh`. DSH and pnpm must be on `PATH`; the profile pins the DSH peer
-ranges it was built against (`0.2.1-rc.5`).
+Clone it on another machine, set the two env vars, run `./install.sh`. DSH and
+pnpm must be on `PATH`; the profile pins the DSH peer ranges it was built
+against (`0.2.1-rc.5`).
 
-## Repo location
+## License
 
-The checkout currently lives inside the DSH workspace because the live `web`
-profile links `mov-skills` through a compatibility symlink at the workspace
-root. Moving the repo elsewhere is fine — rerun `./install.sh dsh` afterwards,
-then delete the root `mov-skills` symlink once `web` points at the repo path.
+MIT — see [LICENSE](LICENSE). Bundled third-party work keeps its own terms:
 
-The live `web` profile still lists the removed plugins; clear them there with
-`dsh plugin --profile web remove @local/openclaw-memory
-@local/workspace-agent-renamer` before restarting.
+| Path | Terms |
+| --- | --- |
+| `packages/dsh-principles/principles/` | MIT, © 2026 Lauren Tan ([pstack](https://github.com/cursor/plugins)); see `LICENSE-pstack.txt` there |
+| `skills/html-report/vendor/mermaid.min.js` | Vendored Mermaid, MIT; provenance in `vendor/README.md` |
