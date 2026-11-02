@@ -1,0 +1,3 @@
+- insert:
+    - id: sidebar-editor
+      name: '@local/dsh-client-sidebar-editor'

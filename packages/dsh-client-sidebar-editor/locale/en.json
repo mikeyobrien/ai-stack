@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Sidebar Editor & Notes",
+    "description": "Edit text files from the preview toolbar with version-guarded saves, and add selection notes to your next message."
+  },
+  "type.label": "File",
+  "empty.title": "Nothing to show",
+  "empty.body": "This tab has no file address.",
+  "loading": "Opening…",
+  "truncated": "Showing the first screenful of lines only. Open the file in a full editor for the rest.",
+  "error.title": "Could not open this file"
+}

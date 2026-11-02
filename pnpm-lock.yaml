@@ -10,6 +10,8 @@ importers:
 
   packages/dsh-backlog: {}
 
+  packages/dsh-client-sidebar-editor: {}
+
   packages/mov-skills:
     dependencies:
       yaml:

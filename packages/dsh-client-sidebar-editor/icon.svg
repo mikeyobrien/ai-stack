@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sidebar file reader">
+  <rect x="6" y="8" width="36" height="48" rx="4" fill="none" stroke="#247bbf" stroke-width="3"/>
+  <path d="M14 20h20M14 28h20M14 36h12" stroke="#247bbf" stroke-width="3" stroke-linecap="round"/>
+  <rect x="40" y="26" width="18" height="30" rx="3" fill="#247bbf" opacity="0.18"/>
+  <rect x="40" y="26" width="18" height="30" rx="3" fill="none" stroke="#247bbf" stroke-width="3"/>
+  <path d="M45 35h8M45 42h8M45 49h5" stroke="#247bbf" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
