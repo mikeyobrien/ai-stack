@@ -6,6 +6,7 @@ configuration/extensions.
 ```text
 ai-stack/
 ├── dsh/profile/                 # portable DSH profile (bundles + patch)
+├── docs/                        # experimental capability runbook
 ├── packages/                    # DSH plugins (pnpm workspace)
 │   ├── dsh-backlog/             # park ideas; explicitly pull into a draft
 │   └── mov-skills/              # skills provider; skills live in skills/
@@ -73,6 +74,12 @@ global rules reach Claude too.
 - **pi extension**: drop a `*.ts` file in `pi/extensions/` and run
   `./install.sh pi`; npm-based extensions go in `pi/npm/package.json` plus
   `settings.json`'s `packages` list.
+
+## Experimental capabilities
+
+Switched-on experimentals, the ones that are explicit compositions rather than
+toggles, and the version-pinning rule for their packages:
+[docs/experimental-capabilities.md](docs/experimental-capabilities.md).
 
 ## Session backlog
 

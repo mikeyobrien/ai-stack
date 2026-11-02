@@ -21,7 +21,14 @@
             name: DeepSeek V4.1 Flash
             contextWindow: 1048576
             maxTokens: 32768
-            input: [ text ]
+            input: [ text, image ]
+            # The gateway takes reasoning_effort: none|low|medium|high|max.
+            reasoningEfforts:
+              off: none
+              low: low
+              medium: medium
+              high: high
+              max: max
 
 # Keep the --trusted-host values from the command line; long-lived cookie so
 # the installed phone PWA stays signed in.
@@ -57,3 +64,18 @@
   config:
     defaultProvider: sensevoice-local
     language: en
+
+# Per-Session Chromium through Playwright MCP. Install the two packages at the
+# running DSH version (they ship no bundle patch, so this is an explicit
+# composition rather than a Plugins toggle):
+#   dsh plugin --profile meta add \
+#     @deepseek-ai/dsh-browser-use@<version> \
+#     @deepseek-ai/dsh-experimental-browser-use-playwright-mcp@<version>
+- insert:
+    - id: browser-use
+      name: "@deepseek-ai/dsh-browser-use"
+    - id: browser-use-playwright
+      name: "@deepseek-ai/dsh-experimental-browser-use-playwright-mcp"
+      config:
+        mode: launch
+        headless: true
