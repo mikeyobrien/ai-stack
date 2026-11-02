@@ -8,6 +8,8 @@ importers:
 
   .: {}
 
+  packages/dsh-backlog: {}
+
   packages/mov-skills:
     dependencies:
       yaml:

@@ -9,3 +9,6 @@ packages/mov-skills/VISION.md
 
 # Flow run artifacts
 .agents/scratch/
+
+# Session backlog state is per machine, not per clone.
+.agents/backlog.json

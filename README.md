@@ -7,6 +7,7 @@ configuration/extensions.
 ai-stack/
 ├── dsh/profile/                 # portable DSH profile (bundles + patch)
 ├── packages/                    # DSH plugins (pnpm workspace)
+│   ├── dsh-backlog/             # park ideas; explicitly pull into a draft
 │   └── mov-skills/              # skills provider; skills live in skills/
 ├── pi/                          # pi settings, models, instructions, extensions
 │   ├── settings.json
@@ -72,6 +73,13 @@ global rules reach Claude too.
 - **pi extension**: drop a `*.ts` file in `pi/extensions/` and run
   `./install.sh pi`; npm-based extensions go in `pi/npm/package.json` plus
   `settings.json`'s `packages` list.
+
+## Session backlog
+
+The [Session backlog plugin](<packages/dsh-backlog/README.md>) adds **Park** and
+**Backlog** beside the composer. Park ideas without interrupting the agent; pull
+selected ideas into a draft later, then send separately. Saved ideas persist at
+workspace scope, with recoverable pulled/dismissed history.
 
 ## Hooks
 

@@ -7,11 +7,14 @@
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
         "@deepseek-ai/dsh-experimental-voice-input-bundle",
-        "@local/mov-skills"
+        "@deepseek-ai/dsh-experimental-tool-worktree",
+        "@local/mov-skills",
+        "@local/dsh-backlog"
       ]
     }
   },
   "dependencies": {
-    "@local/mov-skills": "link:@REPO@/packages/mov-skills"
+    "@local/mov-skills": "link:@REPO@/packages/mov-skills",
+    "@local/dsh-backlog": "link:@REPO@/packages/dsh-backlog"
   }
 }
