@@ -82,6 +82,12 @@ touched, and a principle with a copy in `.removed/` is never resurrected.
 The five were chosen for breadth: verification, tests, debugging, scope, and
 context. The rest of pstack is a hand edit away.
 
+`guard-the-context-window` is **extended**: upstream stops after its first
+pattern item, so this copy completes the list and says so in its body. The other
+four are byte-identical to upstream. A seed only lands on a store that lacks the
+file, so an install that already has the short version keeps it until someone
+edits it.
+
 ## Tests
 
 ```sh
