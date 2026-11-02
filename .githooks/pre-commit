@@ -1,0 +1,5 @@
+#!/bin/sh
+# Validate skill frontmatter before every commit.
+set -eu
+repo=$(git rev-parse --show-toplevel)
+exec node "$repo/packages/mov-skills/scripts/validate-skills.mjs"

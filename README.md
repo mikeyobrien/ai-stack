@@ -73,6 +73,12 @@ global rules reach Claude too.
   `./install.sh pi`; npm-based extensions go in `pi/npm/package.json` plus
   `settings.json`'s `packages` list.
 
+## Hooks
+
+Run `pnpm hooks` once per clone. The pre-commit hook validates every skill's
+YAML frontmatter and refuses the commit when a description would break the
+catalog — for example, an unquoted colon.
+
 ## Sharing
 
 Push the repo, clone it on the other machine, set the two env vars, run

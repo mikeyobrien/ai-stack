@@ -5,6 +5,7 @@
   "scripts": {
     "install:dsh": "./install.sh dsh",
     "install:pi": "./install.sh pi",
+    "hooks": "git config core.hooksPath .githooks",
     "check": "pnpm -r exec node --check index.js"
   }
 }
