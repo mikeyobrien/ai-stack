@@ -1,6 +1,6 @@
 ---
 name: write-one-pager
-description: "Use when a decision is already made and only the page remains — writes the one-page pyramid narrative from a decision artifact. Stage 3 of the align-work-item flow."
+description: "Use when a decision is already made and only the page remains — writes the one-page pyramid narrative from a decision artifact."
 ---
 
 # Write One-Pager
