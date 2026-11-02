@@ -1,17 +1,25 @@
 ---
 name: one-pager
-description: "Use when aligning on a new work item — drafting the one-page narrative that leads with the recommendation and supports it in pyramid order. Turns a scattered proposal into a page a reader can approve in one pass."
+description: "Use when aligning on a new work item — mines the prior art, derives the choice from first principles, then writes the one-page narrative in pyramid order. One pass from open question to an approvable page."
 ---
 
 # One-Pager
 
 ## Why
 
-A work item usually reaches the reader as a pile: context, options, caveats, and the conclusion near the bottom. The reader has to reconstruct the point before they can judge it, and most will not. Barbara Minto's pyramid principle fixes the order of that reconstruction — conclusion first, supporting arguments grouped beneath it, evidence under each argument, and every level answering the question the level above raises. Written that way, a single page gets read once and decided.
+A work item usually reaches the reader as a pile: context, options, caveats, and the conclusion near the bottom. The reader has to reconstruct the point before they can judge it, and most will not. Barbara Minto's pyramid principle fixes the order of that reconstruction — conclusion first, supporting arguments grouped beneath it, evidence under each argument, and every level answering the question the level above raises.
+
+The page is also only as good as the decision under it, and the decision is only as good as the evidence under that. A clean page over a borrowed conclusion is a persuasive mistake. So this skill runs the whole arc: mine what exists, derive the choice from goals and constraints, then align on the page.
 
 ## What
 
-A standalone method for drafting a one-page narrative that aligns a reader on a new work item:
+A standalone method that takes a work item from open question to approvable page in three stages:
+
+- **Mine** — the prior art: what exists, what it assumed, and what failed.
+- **Derive** — the choice from goals and constraints, not from the shortlist.
+- **Align** — one page that leads with the recommendation and supports it in pyramid order.
+
+The page itself carries:
 
 - a governing thought that states the recommendation as an action;
 - an SCQA opening that makes the recommendation feel inevitable;
@@ -20,19 +28,37 @@ A standalone method for drafting a one-page narrative that aligns a reader on a 
 - action titles that carry the argument when read alone;
 - one page, one decision.
 
-It covers proposals, project kickoffs, design bets, and scope changes — anything where a reader must say yes, no, or "change this". It is not a status report, a spec, or a persuasion piece with no decision behind it. It assumes the decision and its owner are already known; if they are not, settle those first.
+It covers proposals, project kickoffs, design bets, and scope changes — anything where a reader must say yes, no, or "change this". It is not a status report, a spec, or a persuasion piece with no decision behind it. It assumes nothing is settled: stages 1 and 2 produce the decision, and stage 3 writes it.
 
 ## How
 
-1. **Name the decision and the reader.** Write the one question the page must answer, who answers it, and what they should do after reading. A page that serves two audiences serves neither.
-2. **Write the governing thought.** One sentence stating the recommendation as an action the reader can take — "Adopt X for Y by Z", not "Considerations regarding X". If the sentence will not form, the thinking is not finished; go back to the work item.
-3. **Draft the key line.** List the three to five points that together prove the governing thought. Make them the same kind of thing — all reasons, all steps, all risks — and check they are MECE: no overlap, and nothing a skeptic would ask for is missing.
-4. **Order the key line.** Pick one ordering and hold it: time (sequence), structure (parts of a whole), or degree (most to least important). Do not mix orders inside one group.
-5. **Test vertical logic.** For each key-line point, write the question it raises in the reader's mind, then make the evidence beneath answer exactly that question. A point that raises no question is decoration; evidence that answers a different question means the point is wrong.
-6. **Write the SCQA opening.** Situation: context the reader already accepts. Complication: what changed, or what is now at stake. Question: the question the complication forces. Answer: the governing thought. Keep it to three to five sentences; its job is to make the recommendation feel inevitable, not to display the work.
-7. **Write action titles.** Every heading is a full sentence carrying its point — "Migrating now costs two weeks and removes the outage risk", not "Migration". A reader who reads only the titles should still get the argument.
-8. **Fill the evidence, then cut to one page.** Under each argument add only the facts, numbers, and links that argument needs. Then cut: repeated context, background the reader already has, and every option you are not recommending. Aim for 400–600 words.
-9. **Red-team the page.** Read it as a skeptic: which claim is unsupported, which number is stale, which objection is missing? Add the strongest counter-case and the condition that would reverse the recommendation. Then read top-down and confirm the order is conclusion, reasons, detail.
+### Mine — build the evidence base
+
+1. **Frame the question and the decision it feeds.** Write what you need to learn and who will act on it. A review without a decision becomes a link dump.
+2. **Probe, then fan out.** List the likely sources — docs, reference implementations, adjacent ecosystems, papers, issues, post-mortems, benchmarks — and probe each briefly before a deep read. Extract per source: what it does, the constraints it assumes, what failed, what it costs, and when it was written.
+3. **Rank skeptically, synthesize by approach.** Weight recency and fit over popularity, separate inherent constraints from inherited ones, and name the recurring patterns, dead ends, and gaps. Stop when new sources stop changing the answer.
+
+For a broad or unfamiliar question, the prior-art skill expands this stage.
+
+### Derive — build the choice
+
+4. **Separate goals from means.** List the outcomes the decision must produce, rank must-haves against nice-to-haves, and say which wins when two criteria conflict.
+5. **Decompose to primitives, then attack the frame.** Break the problem into constraints and quantities; mark each inherited or true. Invert it — "how would we guarantee failure?" — and check whether the real decision is upstream: scope, timing, ownership.
+6. **Derive, evaluate, decide.** Generate options from the primitives, not the shortlist — including doing nothing and the smallest reversible probe. Score under uncertainty, test the assumption that dominates the spread, pre-mortem the leader, and state the recommendation with its confidence and the condition that would reverse it.
+
+For a contested or hard-to-reverse choice, the first-principles skill expands this stage.
+
+### Align — write the page
+
+7. **Name the reader and the decision.** Write the one question the page must answer, who answers it, and what they should do after reading.
+8. **Write the governing thought.** One sentence stating the recommendation as an action — "Adopt X for Y by Z", not "Considerations regarding X".
+9. **Draft the key line.** List the three to five points that together prove the governing thought. Make them the same kind of thing and MECE: no overlap, nothing a skeptic would ask for is missing.
+10. **Order the key line.** Pick one ordering and hold it: time, structure, or degree. Do not mix orders inside one group.
+11. **Test vertical logic.** For each point, write the question it raises, then make the evidence beneath answer exactly that question.
+12. **Write the SCQA opening.** Situation, complication, question, answer — three to five sentences, making the recommendation feel inevitable rather than displaying the work.
+13. **Write action titles.** Every heading is a full sentence carrying its point. A reader who reads only the titles should get the argument.
+14. **Fill the evidence, then cut to one page.** Add only what each argument needs, then cut repeated context, background the reader already has, and every option you are not recommending. Aim for 400–600 words.
+15. **Red-team the page.** Read as a skeptic: which claim is unsupported, which number is stale, which objection is missing? Add the strongest counter-case and the reversal condition, then confirm the order is conclusion, reasons, detail.
 
 ### Skeleton
 
@@ -56,7 +82,8 @@ It covers proposals, project kickoffs, design bets, and scope changes — anythi
 ### Questions
 
 - What is the one question this page answers, and who is asking it?
-- Is the governing thought an action or a topic?
+- What did the evidence change about the option set?
+- Is the recommendation derived or inherited?
 - Are the key-line points the same kind of thing, and do they cover the whole case?
 - What order are they in, and is that the order the reader needs?
 - What question does each point raise, and does the evidence answer it?
@@ -67,6 +94,9 @@ It covers proposals, project kickoffs, design bets, and scope changes — anythi
 
 ### Gotchas
 
+- **Borrowed conclusion**: writing the page over a decision inherited from prior art instead of deriving it.
+- **Research theater**: mining past the point where new sources stop changing the answer.
+- **Analysis without a page**: deriving forever and never aligning; the page is the deliverable.
 - **Topic titles**: a heading that names a subject instead of stating a point hides the argument.
 - **Buried conclusion**: building to the answer for suspense spends the reader's attention and returns nothing.
 - **False grouping**: points that are not the same kind of thing cannot be ordered or summarized.
