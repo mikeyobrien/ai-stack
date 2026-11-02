@@ -12,6 +12,8 @@ importers:
 
   packages/dsh-client-sidebar-editor: {}
 
+  packages/dsh-principles: {}
+
   packages/mov-skills:
     dependencies:
       yaml:

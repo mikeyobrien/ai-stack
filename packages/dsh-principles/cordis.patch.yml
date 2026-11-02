@@ -1,0 +1,6 @@
+# Registers the principles store, its index section, and the read/write tools.
+# The store lives at $DSH_HOME/principles/ and is seeded from ./principles/ on
+# first run; edit files there or use principle_write.
+- insert:
+    - id: principles
+      name: '@local/dsh-principles'

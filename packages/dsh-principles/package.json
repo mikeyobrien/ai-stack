@@ -1,0 +1,27 @@
+{
+  "name": "@local/dsh-principles",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The person's named principles: a user-scoped store, an index in the session prompt, and read/write tools.",
+  "exports": {
+    ".": "./index.js",
+    "./store": "./store.js"
+  },
+  "files": [
+    "index.js",
+    "store.js",
+    "frontmatter.js",
+    "cordis.patch.yml",
+    "principles/**",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
