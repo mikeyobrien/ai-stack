@@ -15,9 +15,9 @@ The page is also only as good as the decision under it, and the decision is only
 
 A standalone method that takes a work item from open question to approvable page in three stages:
 
-- **Mine** — the prior art: what exists, what it assumed, and what failed.
-- **Derive** — the choice from goals and constraints, not from the shortlist.
-- **Align** — one page that leads with the recommendation and supports it in pyramid order.
+- **Mine** — the `prior-art` skill: what exists, what it assumed, and what failed.
+- **Derive** — the `first-principles` skill: the choice from goals and constraints, not from the shortlist.
+- **Align** — this skill: one page that leads with the recommendation and supports it in pyramid order.
 
 The page itself carries:
 
@@ -32,33 +32,23 @@ It covers proposals, project kickoffs, design bets, and scope changes — anythi
 
 ## How
 
-### Mine — build the evidence base
+The first two stages are the other skills; this one supplies the handoff and the page.
 
-1. **Frame the question and the decision it feeds.** Write what you need to learn and who will act on it. A review without a decision becomes a link dump.
-2. **Probe, then fan out.** List the likely sources — docs, reference implementations, adjacent ecosystems, papers, issues, post-mortems, benchmarks — and probe each briefly before a deep read. Extract per source: what it does, the constraints it assumes, what failed, what it costs, and when it was written.
-3. **Rank skeptically, synthesize by approach.** Weight recency and fit over popularity, separate inherent constraints from inherited ones, and name the recurring patterns, dead ends, and gaps. Stop when new sources stop changing the answer.
-
-For a broad or unfamiliar question, the prior-art skill expands this stage.
-
-### Derive — build the choice
-
-4. **Separate goals from means.** List the outcomes the decision must produce, rank must-haves against nice-to-haves, and say which wins when two criteria conflict.
-5. **Decompose to primitives, then attack the frame.** Break the problem into constraints and quantities; mark each inherited or true. Invert it — "how would we guarantee failure?" — and check whether the real decision is upstream: scope, timing, ownership.
-6. **Derive, evaluate, decide.** Generate options from the primitives, not the shortlist — including doing nothing and the smallest reversible probe. Score under uncertainty, test the assumption that dominates the spread, pre-mortem the leader, and state the recommendation with its confidence and the condition that would reverse it.
-
-For a contested or hard-to-reverse choice, the first-principles skill expands this stage.
+1. **Mine — run the `prior-art` skill.** Give it the work item, the decision the page must support, and the audience. Ask for the shortlist, the constraints each option assumes, what failed, the gaps, and sources with dates. Skip only if you already hold citable evidence.
+2. **Derive — run the `first-principles` skill.** Give it the evidence base, the goals, and the reversibility class. Ask for the recommendation, its confidence, the assumption that dominates the spread, and the condition that would reverse it. Skip only if the decision is made and cheap to undo.
+3. **Align — write the page.** The recommendation and its supporting points are now fixed; what remains is ordering and compression. Follow the moves below.
 
 ### Align — write the page
 
-7. **Name the reader and the decision.** Write the one question the page must answer, who answers it, and what they should do after reading.
-8. **Write the governing thought.** One sentence stating the recommendation as an action — "Adopt X for Y by Z", not "Considerations regarding X".
-9. **Draft the key line.** List the three to five points that together prove the governing thought. Make them the same kind of thing and MECE: no overlap, nothing a skeptic would ask for is missing.
-10. **Order the key line.** Pick one ordering and hold it: time, structure, or degree. Do not mix orders inside one group.
-11. **Test vertical logic.** For each point, write the question it raises, then make the evidence beneath answer exactly that question.
-12. **Write the SCQA opening.** Situation, complication, question, answer — three to five sentences, making the recommendation feel inevitable rather than displaying the work.
-13. **Write action titles.** Every heading is a full sentence carrying its point. A reader who reads only the titles should get the argument.
-14. **Fill the evidence, then cut to one page.** Add only what each argument needs, then cut repeated context, background the reader already has, and every option you are not recommending. Aim for 400–600 words.
-15. **Red-team the page.** Read as a skeptic: which claim is unsupported, which number is stale, which objection is missing? Add the strongest counter-case and the reversal condition, then confirm the order is conclusion, reasons, detail.
+1. **Name the reader and the decision.** Write the one question the page must answer, who answers it, and what they should do after reading.
+2. **Write the governing thought.** One sentence stating the recommendation as an action — "Adopt X for Y by Z", not "Considerations regarding X".
+3. **Draft the key line.** List the three to five points that together prove the governing thought. Make them the same kind of thing and MECE: no overlap, nothing a skeptic would ask for is missing.
+4. **Order the key line.** Pick one ordering and hold it: time, structure, or degree. Do not mix orders inside one group.
+5. **Test vertical logic.** For each point, write the question it raises, then make the evidence beneath answer exactly that question.
+6. **Write the SCQA opening.** Situation, complication, question, answer — three to five sentences, making the recommendation feel inevitable rather than displaying the work.
+7. **Write action titles.** Every heading is a full sentence carrying its point. A reader who reads only the titles should get the argument.
+8. **Fill the evidence, then cut to one page.** Add only what each argument needs, then cut repeated context, background the reader already has, and every option you are not recommending. Aim for 400–600 words.
+9. **Red-team the page.** Read as a skeptic: which claim is unsupported, which number is stale, which objection is missing? Add the strongest counter-case and the reversal condition, then confirm the order is conclusion, reasons, detail.
 
 ### Skeleton
 
@@ -82,6 +72,8 @@ For a contested or hard-to-reverse choice, the first-principles skill expands th
 ### Questions
 
 - What is the one question this page answers, and who is asking it?
+- Which stage did I skip, and what justified it?
+- Did the handoff carry the constraints, or only the links?
 - What did the evidence change about the option set?
 - Is the recommendation derived or inherited?
 - Are the key-line points the same kind of thing, and do they cover the whole case?
@@ -95,7 +87,9 @@ For a contested or hard-to-reverse choice, the first-principles skill expands th
 ### Gotchas
 
 - **Borrowed conclusion**: writing the page over a decision inherited from prior art instead of deriving it.
-- **Research theater**: mining past the point where new sources stop changing the answer.
+- **Silent skipping**: going straight to the page without mine or derive, and without saying why.
+- **Reference without handoff**: loading the other skills but not telling them what the page needs — no decision frame, no audience — so their output does not fit.
+- **Skill ping-pong**: running derive as a formality and then re-deciding inside the page; the recommendation must come from stage 2.
 - **Analysis without a page**: deriving forever and never aligning; the page is the deliverable.
 - **Topic titles**: a heading that names a subject instead of stating a point hides the argument.
 - **Buried conclusion**: building to the answer for suspense spends the reader's attention and returns nothing.
