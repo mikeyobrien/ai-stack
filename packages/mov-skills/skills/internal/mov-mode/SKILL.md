@@ -1,6 +1,7 @@
 ---
 name: mov-mode
 description: "Use when running a named flow — resolves a flow from its own table and threads an artifact through its stages. The entry point for composition; individual skills stay single-purpose."
+user-invocable: false
 ---
 
 # Mov Mode
@@ -10,7 +11,7 @@ Flows are data in `references/flows.md`: a name and an ordered vector of skill n
 ## How
 
 1. Read `references/flows.md`; resolve the requested flow to its vector.
-2. Make a run directory: `.artifacts/<YYYY-MM-DD>-<slug>/`.
+2. Make a run directory: `.agents/scratch/<YYYY-MM-DD>-<slug>/`.
 3. Start the value as the work item.
 4. For each stage in order: load that skill, give it the current value as its main input, and have it write `<run-dir>/<stage>.md`.
 5. Pass that path as the next value.

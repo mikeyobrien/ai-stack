@@ -5,8 +5,11 @@
  * Catches the failure mode that dropped first-principles from the catalog: an
  * unquoted colon in `description` makes the frontmatter invalid YAML, and the
  * provider silently skips the skill.
+ *
+ * Scans both layouts the provider serves: a flat `<name>/SKILL.md` and one
+ * level of grouping, `<group>/<name>/SKILL.md`.
  */
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,9 +29,57 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
 const problems = [];
 let checked = 0;
 
-for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
-	if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-	const file = join(skillsDir, entry.name, 'SKILL.md');
+/**
+ * Whether a path exists.
+ * @param path - absolute path.
+ * @returns true when it exists.
+ */
+async function exists(path) {
+	try {
+		await stat(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Find every skill bundle under the skills folder.
+ * @returns bundle name plus its SKILL.md path.
+ */
+async function discover() {
+	const found = [];
+	let entries;
+	try {
+		entries = await readdir(skillsDir, { withFileTypes: true });
+	} catch {
+		return found;
+	}
+	for (const entry of entries) {
+		if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+		const entryPath = join(skillsDir, entry.name);
+		if (await exists(join(entryPath, 'SKILL.md'))) {
+			found.push({ name: entry.name, file: join(entryPath, 'SKILL.md') });
+			continue;
+		}
+		let children;
+		try {
+			children = await readdir(entryPath, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+		for (const child of children) {
+			if (!child.isDirectory() || child.name.startsWith('.')) continue;
+			const childPath = join(entryPath, child.name);
+			if (await exists(join(childPath, 'SKILL.md'))) {
+				found.push({ name: child.name, file: join(childPath, 'SKILL.md') });
+			}
+		}
+	}
+	return found;
+}
+
+for (const { name, file } of await discover()) {
 	checked += 1;
 
 	let raw;
@@ -55,8 +106,8 @@ for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
 
 	if (typeof data?.name !== 'string' || !NAME.test(data.name)) {
 		problems.push(`${file}: name must be a kebab-case string`);
-	} else if (data.name !== entry.name) {
-		problems.push(`${file}: name "${data.name}" does not match folder "${entry.name}"`);
+	} else if (data.name !== name) {
+		problems.push(`${file}: name "${data.name}" does not match folder "${name}"`);
 	}
 
 	if (typeof data?.description !== 'string' || data.description.trim() === '') {

@@ -1,6 +1,7 @@
 ---
 name: write-one-pager
 description: "Use when a decision is already made and only the page remains — writes the one-page pyramid narrative from a decision artifact."
+user-invocable: false
 ---
 
 # Write One-Pager

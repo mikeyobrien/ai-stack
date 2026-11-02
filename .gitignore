@@ -8,4 +8,4 @@ node_modules/
 packages/mov-skills/VISION.md
 
 # Flow run artifacts
-.artifacts/
+.agents/scratch/

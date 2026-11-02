@@ -2,15 +2,17 @@
  * MOV Skills — personal agent skills packaged as a DSH plugin.
  *
  * The provider registers on the skill registry (`ctx.skills`) and serves every
- * directory under `skills/` that contains a `SKILL.md`. A skill added, edited,
- * or removed while the harness runs reaches the next session catalog on its own:
- * the provider polls the folder for catalog-relevant changes and invalidates the
- * registry, and skill bodies are re-read on every load.
+ * skill bundle under `skills/`: a flat `<name>/SKILL.md`, a flat `<name>.md`,
+ * or one level down inside a group folder, `<group>/<name>/SKILL.md`. A skill
+ * added, edited, or removed while the harness runs reaches the next session
+ * catalog on its own: the provider polls the folder for catalog-relevant
+ * changes and invalidates the registry, and skill bodies are re-read on every
+ * load.
  *
  * @module @local/mov-skills
  */
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
@@ -56,20 +58,67 @@ export function apply(ctx) {
 }
 
 /**
- * List every valid skill in the folder.
+ * List every valid skill in the folder, including one level of group folders.
  * @param ctx - context used for diagnostics.
  * @returns candidates sorted by name; unreadable or invalid entries are skipped.
  */
-async function listSkills(ctx) {
+export async function listSkills(ctx) {
 	const candidates = [];
-	for (const entry of await readSkillsDir(ctx)) {
-		const kind = await entryKind(entry);
-		if (kind === undefined) continue;
-		const file = kind === 'directory' ? join(SKILLS_DIR, entry.name, 'SKILL.md') : join(SKILLS_DIR, entry.name);
+	const seen = new Set();
+	for (const { file } of await discoverSkillFiles()) {
+		const kind = basename(file) === 'SKILL.md' ? 'directory' : 'file';
 		const skill = await readSkill(file, kind, ctx);
-		if (skill !== undefined) candidates.push(skill.candidate);
+		if (skill === undefined || seen.has(skill.candidate.name)) continue;
+		seen.add(skill.candidate.name);
+		candidates.push(skill.candidate);
 	}
 	return candidates.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+}
+
+/**
+ * Find every skill instruction file under the skills folder.
+ *
+ * A top-level directory with `SKILL.md` is a skill; one without it is a group,
+ * and its direct children are scanned for skill bundles. Flat `<name>.md` files
+ * at the top level are skills; dot-prefixed entries are ignored everywhere.
+ *
+ * @returns instruction files with the bundle name and absolute path.
+ */
+export async function discoverSkillFiles() {
+	const found = [];
+	let entries;
+	try {
+		entries = await readdir(SKILLS_DIR, { withFileTypes: true });
+	} catch {
+		return found;
+	}
+	for (const entry of entries) {
+		const kind = await entryKind(SKILLS_DIR, entry);
+		if (kind === undefined) continue;
+		const entryPath = join(SKILLS_DIR, entry.name);
+		if (kind === 'file') {
+			found.push({ name: entry.name.slice(0, -3), file: entryPath });
+			continue;
+		}
+		if (await exists(join(entryPath, 'SKILL.md'))) {
+			found.push({ name: entry.name, file: join(entryPath, 'SKILL.md') });
+			continue;
+		}
+		let children;
+		try {
+			children = await readdir(entryPath, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+		for (const child of children) {
+			if (!child.isDirectory() || child.name.startsWith('.')) continue;
+			const childPath = join(entryPath, child.name);
+			if (await exists(join(childPath, 'SKILL.md'))) {
+				found.push({ name: child.name, file: join(childPath, 'SKILL.md') });
+			}
+		}
+	}
+	return found;
 }
 
 /**
@@ -216,16 +265,17 @@ function readBoolean(value) {
 
 /**
  * Classify a direct entry of the skills folder.
+ * @param root - folder the entry was read from.
  * @param entry - directory entry.
  * @returns 'directory' for a skill bundle, 'file' for a flat Markdown skill, else undefined.
  */
-async function entryKind(entry) {
+async function entryKind(root, entry) {
 	if (entry.name.startsWith('.')) return undefined;
 	if (entry.isDirectory()) return 'directory';
 	if (entry.isFile()) return entry.name.endsWith('.md') ? 'file' : undefined;
 	if (entry.isSymbolicLink()) {
 		try {
-			const target = await stat(join(SKILLS_DIR, entry.name));
+			const target = await stat(join(root, entry.name));
 			if (target.isDirectory()) return 'directory';
 			if (target.isFile() && entry.name.endsWith('.md')) return 'file';
 		} catch {
@@ -236,16 +286,16 @@ async function entryKind(entry) {
 }
 
 /**
- * Read the skills folder, tolerating a missing folder.
- * @param ctx - context used for diagnostics.
- * @returns direct entries, or an empty list when the folder does not exist.
+ * Whether a path exists.
+ * @param path - absolute path.
+ * @returns true when it exists.
  */
-async function readSkillsDir(ctx) {
+async function exists(path) {
 	try {
-		return await readdir(SKILLS_DIR, { withFileTypes: true });
-	} catch (error) {
-		if (error?.code !== 'ENOENT') ctx.logger?.warn?.(`mov-skills: cannot scan ${SKILLS_DIR}: ${errorMessage(error)}`);
-		return [];
+		await stat(path);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -277,25 +327,16 @@ export function watchSkills(onChanged) {
 
 /**
  * Compose a cheap fingerprint of the catalog-relevant files.
- * @returns sorted `entry:kind:mtime:size` records; a missing folder yields an empty string.
+ * @returns sorted `file:mtime:size` records; a missing folder yields an empty string.
  */
 async function catalogSignature() {
-	let entries;
-	try {
-		entries = await readdir(SKILLS_DIR, { withFileTypes: true });
-	} catch {
-		return '';
-	}
 	const parts = [];
-	for (const entry of entries) {
-		const kind = await entryKind(entry);
-		if (kind === undefined) continue;
-		const file = kind === 'directory' ? join(SKILLS_DIR, entry.name, 'SKILL.md') : join(SKILLS_DIR, entry.name);
+	for (const { file } of await discoverSkillFiles()) {
 		try {
 			const info = await stat(file);
-			parts.push(`${entry.name}:${kind}:${info.mtimeMs}:${info.size}`);
+			parts.push(`${file}:${info.mtimeMs}:${info.size}`);
 		} catch {
-			// A bundle folder without SKILL.md contributes no candidate.
+			// A bundle without a readable SKILL.md contributes no candidate.
 		}
 	}
 	return parts.sort().join('|');
