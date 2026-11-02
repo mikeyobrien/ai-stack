@@ -1,0 +1,81 @@
+---
+name: write-one-pager
+description: "Use when a decision is already made and only the page remains — writes the one-page pyramid narrative from a decision artifact. Stage 3 of the align-work-item flow."
+---
+
+# Write One-Pager
+
+## Why
+
+A settled decision still has to survive the reader. If the page arrives as context, options, and a conclusion at the bottom, the reader reconstructs the point before judging it — and most will not. Minto's pyramid fixes the order: conclusion first, arguments grouped beneath, evidence under each, and every level answering the question the level above raises.
+
+## What
+
+A standalone method for turning a decision artifact into one page:
+
+- a governing thought that states the recommendation as an action;
+- an SCQA opening that makes the recommendation feel inevitable;
+- a key line of three to five points, the same kind of thing, in one order;
+- evidence under each point, only as much as the point needs;
+- action titles that carry the argument when read alone;
+- 400–600 words, one page, one decision.
+
+It assumes the recommendation, its confidence, and its reversal condition are already decided. If they are not, the page is premature — run the derive stage first.
+
+## How
+
+1. **Name the reader and the decision.** Write the one question the page must answer, who answers it, and what they should do after reading.
+2. **Write the governing thought.** One sentence stating the recommendation as an action — "Adopt X for Y by Z", not "Considerations regarding X".
+3. **Draft the key line.** List the three to five points that together prove the governing thought. Make them the same kind of thing and MECE: no overlap, nothing a skeptic would ask for is missing.
+4. **Order the key line.** Pick one ordering and hold it: time, structure, or degree. Do not mix orders inside one group.
+5. **Test vertical logic.** For each point, write the question it raises, then make the evidence beneath answer exactly that question.
+6. **Write the SCQA opening.** Situation, complication, question, answer — three to five sentences, making the recommendation feel inevitable rather than displaying the work.
+7. **Write action titles.** Every heading is a full sentence carrying its point. A reader who reads only the titles should get the argument.
+8. **Fill the evidence, then cut to one page.** Add only what each argument needs, then cut repeated context, background the reader already has, and every option you are not recommending. Aim for 400–600 words.
+9. **Red-team the page.** Read as a skeptic: which claim is unsupported, which number is stale, which objection is missing? Add the strongest counter-case and the reversal condition, then confirm the order is conclusion, reasons, detail.
+
+### Skeleton
+
+```
+# <Action title: the recommendation as a sentence>
+
+<SCQA, 3–5 sentences: Situation. Complication. Question. Answer.>
+
+## <Action title — first key-line point>
+<The point, then only the evidence it needs.>
+
+## <Action title — second key-line point>
+<...>
+
+## <Action title — third key-line point>
+<...>
+
+**What would change this.** <The evidence or condition that reverses the recommendation.>
+```
+
+### Questions
+
+- What is the one question this page answers, and who is asking it?
+- Is the governing thought an action or a topic?
+- Are the key-line points the same kind of thing, and do they cover the whole case?
+- What order are they in, and is that the order the reader needs?
+- What question does each point raise, and does the evidence answer it?
+- Which claim would a skeptic attack first, and where is its support?
+- What would reverse the recommendation, and is that stated?
+- What can be cut without weakening the argument?
+- Does the page still work if the reader only reads the titles?
+
+### Gotchas
+
+- **Borrowed conclusion**: writing a page over a decision that was never derived; the page inherits the error.
+- **Topic titles**: a heading that names a subject instead of stating a point hides the argument.
+- **Buried conclusion**: building to the answer for suspense spends the reader's attention and returns nothing.
+- **False grouping**: points that are not the same kind of thing cannot be ordered or summarized.
+- **Overlap and gaps**: non-MECE arguments double-count and leave the skeptic's question unanswered.
+- **Label summaries**: a parent idea that restates its children ("three considerations") adds a level without adding meaning; it must summarize them.
+- **Evidence dump**: every fact you have is not evidence; include what the argument needs and cut the rest.
+- **Situation bloat**: background the reader already accepts delays the point.
+- **Two pages**: a one-pager that spills over has not been prioritized; cut an argument, not the font.
+- **Mixed order**: switching from importance to chronology mid-group makes the reader re-orient.
+- **No counter-case**: a page with no objection reads as advocacy, not analysis.
+- **Scope creep**: a page that argues for the whole roadmap argues for nothing; one work item per page.

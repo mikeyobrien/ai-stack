@@ -1,21 +1,26 @@
 ---
 name: mov-mode
-description: Routing work through @mikeyobrienv's skills and principles.
+description: "Use when running a named flow — resolves a flow from flows.md and threads an artifact through its stages. The entry point for composition; individual skills stay single-purpose."
 ---
 
 # Mov Mode
 
-## When to use
+Flows are data in `../../flows.md`: a name and an ordered vector of skill names.
 
-Routing work through @mikeyobrienv's skills and principles.
+## How
 
-## Workflow
+1. Read `../../flows.md`; resolve the requested flow to its vector.
+2. Make a run directory: `.artifacts/<YYYY-MM-DD>-<slug>/`.
+3. Start the value as the work item.
+4. For each stage in order: load that skill, give it the current value as its main input, and have it write `<run-dir>/<stage>.md`.
+5. Pass that path as the next value.
+6. Stop if a stage writes a blocked artifact; report its reason.
+7. Return the last artifact's path.
 
-1. Describe the first step.
+The runner knows no skill names: they come from the vector. Add or reorder stages by editing the data.
 
-2. Describe the next step.
+## Gotchas
 
-## Notes
-
-- Keep instructions imperative and specific.
-- Put long reference material in `references/` and point at it here.
+- **Runner logic in a skill**: a skill that names other skills has leaked the composition; move the names into `flows.md`.
+- **Artifact by summary**: pass the file path, not a recap; a summary drops evidence.
+- **Silent skip**: a stage that does nothing writes a blocked artifact with the reason.
