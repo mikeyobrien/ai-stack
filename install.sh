@@ -71,7 +71,7 @@ install_pi() {
 
   # Share the mov-skills skills with pi. Existing real directories win.
   local skill name dest
-  for skill in "$REPO"/packages/mov-skills/skills/*/; do
+  for skill in "$REPO"/skills/*/; do
     [ -f "${skill}SKILL.md" ] || continue
     name="$(basename "${skill%/}")"
     dest="$PI_AGENT_DIR/skills/$name"

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
 /** Folder that holds the skills served by the provider. */
-const SKILLS_DIR = fileURLToPath(new URL('../skills/', import.meta.url));
+const SKILLS_DIR = fileURLToPath(new URL('../../../skills/', import.meta.url));
 
 /** Starter file copied for each new skill; hidden from discovery by its dot prefix. */
 const TEMPLATE_FILE = join(SKILLS_DIR, '.template', 'SKILL.md');

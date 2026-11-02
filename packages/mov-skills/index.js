@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 /** Folder scanned for skills; it ships inside the package so it travels with it. */
-export const SKILLS_DIR = fileURLToPath(new URL('./skills/', import.meta.url));
+export const SKILLS_DIR = fileURLToPath(new URL('../../skills/', import.meta.url));
 
 /** Provider label used by skill tooling and the registry. */
 export const PROVIDER_NAME = 'mov-skills';

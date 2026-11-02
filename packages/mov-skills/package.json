@@ -7,8 +7,7 @@
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg",
-    "./skills/*": "./skills/*"
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
@@ -16,7 +15,6 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "skills/**",
     "scripts/**"
   ],
   "dsh": {

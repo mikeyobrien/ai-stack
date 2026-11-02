@@ -1,7 +1,7 @@
 # MOV Skills
 
 Personal agent skills. Every skill folder in
-[`skills/`](./skills) becomes an entry in each session's skill catalog, loadable
+[`skills/`](../../skills) becomes an entry in each session's skill catalog, loadable
 with the `skill` tool and invocable as `/name` — exactly like any other skill.
 
 The base is intentionally empty: add your own skills to `skills/` and they go
@@ -24,6 +24,12 @@ From this package's root the same entry point is `./new-skill`. The long form
 but a `node` path is resolved against the current directory — typed inside
 `packages/mov-skills/` it resolves to `packages/mov-skills/packages/mov-skills/…`
 and fails. Use the `./new-skill` symlink, which resolves its own location.
+
+The skills themselves live at the repository root, `skills/`, not inside this
+package: they are the user-level set you edit and distribute, while
+`.agents/skills/` holds the skills specific to this checkout. The scaffolder and
+the validator resolve the root relative to themselves, so both work from any
+directory.
 
 With a terminal and no arguments — or with a name but no `--when` — the script
 interviews you for the missing pieces, shows a summary, and writes nothing until

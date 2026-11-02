@@ -21,8 +21,8 @@ try {
 	process.exit(1);
 }
 
-const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const skillsDir = join(packageDir, 'skills');
+const repoDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const skillsDir = join(repoDir, 'skills');
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
 

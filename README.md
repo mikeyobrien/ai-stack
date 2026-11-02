@@ -9,7 +9,7 @@ ai-stack/
 ├── docs/                        # experimental capability runbook
 ├── packages/                    # DSH plugins (pnpm workspace)
 │   ├── dsh-backlog/             # park ideas; explicitly pull into a draft
-│   └── mov-skills/              # skills provider; skills live in skills/
+│   └── mov-skills/              # skills provider; serves ../skills/
 ├── pi/                          # pi settings, models, instructions, extensions
 │   ├── settings.json
 │   ├── models.json
@@ -45,7 +45,7 @@ dependency wherever the checkout lives.
 | --- | --- |
 | `dsh/profile/*` | `$DSH_HOME/profiles/$PROFILE/` |
 | `packages/mov-skills` | linked into that profile |
-| `packages/mov-skills/skills/*` | also symlinked into `~/.pi/agent/skills/` |
+| `skills/*` | your user-level skills; also symlinked into `~/.pi/agent/skills/` |
 | `pi/settings.json`, `models.json`, `AGENTS.md` | `~/.pi/agent/` |
 | `pi/npm/package.json` | `~/.pi/agent/npm/`, then `npm install` |
 | `pi/themes/omarchy-system.json` | `~/.pi/agent/themes/` |
