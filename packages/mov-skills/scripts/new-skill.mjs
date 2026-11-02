@@ -259,7 +259,7 @@ async function createSkill(options) {
 	const body = template
 		.replaceAll('{name}', options.name)
 		.replaceAll('{title}', toTitle(options.name))
-		.replaceAll('{description}', description);
+		.replaceAll('{description}', JSON.stringify(description));
 
 	await mkdir(skillDir, { recursive: true });
 	await writeFile(join(skillDir, 'SKILL.md'), body, 'utf8');
