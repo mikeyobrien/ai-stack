@@ -116,6 +116,18 @@ test('[M3] disposing the host effect stops the watchdog and its timers', async (
   assert.equal(bridge.watchdog.isArmed('session-1'), false, 'no stall timer may outlive the plugin');
 });
 
+test('[M3] the bridge cancels through the host session Remote without extra fields', async (t) => {
+  const { host, config } = await setup(t);
+  const bridge = await apply(host, config);
+
+  await bridge.host.cancel('session-1');
+
+  // 0.2.1-rc.5's session/cancel Remote takes only { sessionId }; the
+  // keepInbox:true semantics live inside the host implementation (verified in
+  // dsh-api-session-controller), not in the request the bridge sends.
+  assert.deepEqual(host.sessionController.cancels.map((entry) => entry.request), [{ sessionId: 'session-1' }]);
+});
+
 test('[M4] a missing token disables the plugin without blocking host boot', async (t) => {
   const { bot, host, config } = await setup(t);
   delete process.env[ENV_NAME];
@@ -159,6 +171,22 @@ test('[M7] /verbosity persists per topic across a bridge restart', async (t) => 
   const bridge2 = await apply(host2, { ...config, baseUrl: bot2.baseUrl });
   await command(bridge2, bot2, { updateId: 2, text: '/verbosity' });
   assert.equal(bot2.messages.at(-1).text, 'Verbosity: normal (quiet, normal, verbose)');
+});
+
+test('[M8] a failed prompt leaves no watchdog armed and reports the error', async (t) => {
+  const { bot, host, config } = await setup(t);
+  // The adapter binds the controller method at apply time, so install the
+  // failure before the bridge composes.
+  host.sessionController.prompt = async () => {
+    throw new Error('queue is full');
+  };
+  const bridge = await apply(host, config);
+  await bridge.store.bind({ chatId: CHAT, threadId: THREAD, sessionId: 'session-1', managedMode: 'auto' });
+
+  await command(bridge, bot, { updateId: 1, text: 'please continue' });
+
+  assert.equal(bridge.watchdog.isArmed('session-1'), false, 'no turn started, so nothing may later be cancelled');
+  assert.match(bot.messages.at(-1).text, /Prompt failed: queue is full/);
 });
 
 test('[M4] unbound lobby text is answered with instructions instead of entering a session', async (t) => {

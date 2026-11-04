@@ -20,12 +20,11 @@ function commandName(raw) {
 
 /** Operator commands and prompt ingestion for one bound topic. */
 export class Commands {
-  constructor({ store, bot, host, delivery, watchdog = null, allowedChatIds = [], logger = console } = {}) {
+  constructor({ store, bot, host, delivery, allowedChatIds = [], logger = console } = {}) {
     this.store = store;
     this.bot = bot;
     this.host = host;
     this.delivery = delivery;
-    this.watchdog = watchdog;
     this.allowedChatIds = new Set(allowedChatIds);
     this.logger = logger;
   }
@@ -62,7 +61,9 @@ export class Commands {
       return { handled: true, reason: 'unbound' };
     }
     this.delivery.noteOwnPrompt(binding.sessionId, text);
-    this.watchdog?.arm(binding.sessionId);
+    // The watchdog arms on the host's turn/start, never on prompt acceptance:
+    // a prompt that throws before a turn exists must not leave a timer that
+    // later cancels unrelated queued work.
     try {
       await this.host.prompt(binding.sessionId, text);
     } catch (error) {

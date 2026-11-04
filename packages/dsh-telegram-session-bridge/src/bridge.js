@@ -54,7 +54,6 @@ export async function createBridge({
     bot: api,
     host,
     delivery,
-    watchdog,
     allowedChatIds: options.allowedChatIds,
     logger,
   });

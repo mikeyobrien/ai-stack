@@ -5,7 +5,7 @@ import { openBindingStore } from '../src/state.js';
 import { TelegramBotApi } from '../src/telegram.js';
 import { Delivery } from '../src/delivery.js';
 import { FakeBotApi } from './helpers/fake-bot-api.js';
-import { assistantEvent, makeTempDir, removeDir, userEvent } from './helpers/fixtures.js';
+import { assistantEvent, makeTempDir, removeDir, syntheticUserEvent, userEvent } from './helpers/fixtures.js';
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -69,6 +69,21 @@ test('[M6] web-originated user turns and assistant finals keep transcript parity
     bot.messages.map((message) => message.text),
     ['▸ asked from the web GUI', 'answered to both surfaces'],
   );
+});
+
+test('[M6] synthetic loop context is never echoed to the topic', async (t) => {
+  const { bot, store, delivery } = await setup(t);
+  await store.bind({ chatId: 111, threadId: 42, sessionId: 'session-a', managedMode: 'auto' });
+  const session = { id: 'session-a' };
+
+  for (const kind of ['runtime-context', 'time-context', 'openclaw-heartbeat', 'skill-catalog']) {
+    const addressed = await delivery.handleSessionEvent(session, syntheticUserEvent(kind, `loop context from ${kind}`));
+    assert.equal(addressed, true, `${kind} is still routed through the binding`);
+  }
+  assert.deepEqual(bot.messages, [], 'synthetic user/message sources must not flood the topic');
+
+  await delivery.handleSessionEvent(session, userEvent('asked by the operator'));
+  assert.deepEqual(bot.messages.map((message) => message.text), ['▸ asked by the operator']);
 });
 
 test('[M6] a prompt sent from Telegram is not echoed back as a duplicate', async (t) => {

@@ -28,9 +28,14 @@ export class FakeSessionController {
     return { accepted: true };
   }
 
-  /** Mirrors 0.2.1-rc.5: session/cancel always keeps the pending inbox. */
+  /**
+   * Mirrors 0.2.1-rc.5: the session/cancel Remote takes only { sessionId } and
+   * its implementation calls `agent.cancel({kind:'user'},{keepInbox:true})`
+   * internally. Recording both keeps the bridge's request shape (the part the
+   * bridge owns) separate from the host behavior it relies on.
+   */
   cancel(request) {
-    this.cancels.push({ sessionId: request.sessionId, keepInbox: true });
+    this.cancels.push({ request, agentCancel: { kind: 'user', keepInbox: true } });
     return { accepted: true };
   }
 

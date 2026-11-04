@@ -143,6 +143,25 @@ test('[M5] a bound question returns the selected labels to the host', async (t) 
   assert.equal(bot.callbackAnswers.at(-1).text, 'Answered');
 });
 
+test('[M5] a question with more than three options keeps every option answerable', async (t) => {
+  const { bot, interactions } = await setup(t);
+  const questions = [
+    {
+      id: 'q1',
+      question: 'Which environment?',
+      options: [{ label: 'dev' }, { label: 'staging' }, { label: 'prod' }, { label: 'sandbox' }],
+    },
+  ];
+  const promise = interactions.handleQuestion(questionRequest({ questions }), () => 'native');
+  await waitFor(() => bot.messages.length === 1);
+
+  // The fourth option wraps onto the next keyboard row instead of being cut.
+  const fourth = buttonData(bot, 1, 0);
+  const result = await interactions.handleCallback(callbackQuery({ data: fourth }));
+  assert.equal(result.accepted, true);
+  assert.deepEqual(await promise, { answers: [{ id: 'q1', selected: ['sandbox'] }] });
+});
+
 test('[M5] a multi-select question toggles options and finishes on Done', async (t) => {
   const { bot, interactions } = await setup(t);
   const questions = [

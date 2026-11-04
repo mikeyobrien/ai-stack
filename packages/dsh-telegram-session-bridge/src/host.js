@@ -22,12 +22,38 @@ export function assistantFinalText(event) {
   return text.trim() ? text : null;
 }
 
-/** Visible user text from one durable session event, or null. */
+/**
+ * Visible user text from one durable session event, or null.
+ *
+ * 0.2.1-rc.5 v4 records make the payload the message itself: `data.content`
+ * plus `data.source`. Synthetic loop traffic (runtime context, time context,
+ * heartbeats, skill catalogs) arrives as `user/message` too, so only
+ * `source.kind === 'user'` is a real human turn. Telegram-originated prompts
+ * also use kind `user`.
+ */
 export function userMessageText(event) {
   if (event?.type !== 'user/message') return null;
   if (event.surfaceOp !== undefined && event.surfaceOp !== 'append') return null;
-  const text = textFromContent(event.data?.message?.content);
+  if (event.data?.source?.kind !== 'user') return null;
+  const text = textFromContent(event.data?.content);
   return text.trim() ? text : null;
+}
+
+/**
+ * Reasoning digests from one durable assistant message. 0.2.1-rc.5 has no
+ * assistant/thinking event: reasoning is a `{type:'reasoning', text}` content
+ * block inside `assistant/message.data.message.content` (the same shape as
+ * live `agent/assistant-stream` frames).
+ */
+export function assistantReasoningTexts(event) {
+  if (event?.type !== 'assistant/message') return [];
+  if (event.surfaceOp !== undefined && event.surfaceOp !== 'append') return [];
+  const content = event.data?.message?.content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((part) => part?.type === 'reasoning' && typeof part.text === 'string')
+    .map((part) => part.text.trim())
+    .filter(Boolean);
 }
 
 /** Last assistant text in a session log; used for restore-with-replay. */

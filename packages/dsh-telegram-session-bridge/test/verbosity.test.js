@@ -5,7 +5,7 @@ import { openBindingStore } from '../src/state.js';
 import { TelegramBotApi } from '../src/telegram.js';
 import { Delivery } from '../src/delivery.js';
 import { FakeBotApi } from './helpers/fake-bot-api.js';
-import { assistantEvent, makeTempDir, removeDir, toolCallEvent } from './helpers/fixtures.js';
+import { assistantEvent, makeTempDir, removeDir, toolCallEvent, turnEndEvent } from './helpers/fixtures.js';
 
 const CHAT = 111;
 const THREAD = 42;
@@ -44,25 +44,39 @@ test('[M7] quiet delivers finals only; normal adds tool digests; verbose adds th
   const session = { id: 'session-a' };
 
   await delivery.handleSessionEvent(session, toolCallEvent('bash', { command: 'ls' }));
-  assert.equal(bot.messages.length, 0, 'quiet hides tool activity');
-
-  await delivery.handleSessionEvent(session, assistantEvent('the answer'));
-  assert.equal(bot.messages.length, 1);
-  assert.equal(bot.messages[0].text, 'the answer');
+  await delivery.handleSessionEvent(session, assistantEvent('the answer', { reasoning: 'checking the filesystem first' }));
+  assert.deepEqual(bot.messages.map((message) => message.text), ['the answer'], 'quiet hides tool and reasoning digests');
 
   await store.setVerbosity({ chatId: CHAT, threadId: THREAD, level: 'normal' });
   await delivery.handleSessionEvent(session, toolCallEvent('bash', { command: 'ls' }));
-  assert.equal(bot.messages.length, 2);
-  assert.match(bot.messages[1].text, /^⚙ bash /);
+  await delivery.handleSessionEvent(session, assistantEvent('normal answer', { seq: 12, reasoning: 'still hidden' }));
+  assert.deepEqual(bot.messages.slice(-2).map((message) => message.text), [
+    '⚙ bash {"command":"ls"}',
+    'normal answer',
+  ]);
 
   await store.setVerbosity({ chatId: CHAT, threadId: THREAD, level: 'verbose' });
-  await delivery.handleSessionEvent(session, {
-    type: 'assistant/thinking',
-    seq: 12,
-    data: { text: 'checking the filesystem first' },
-  });
-  assert.equal(bot.messages.length, 3);
-  assert.match(bot.messages[2].text, /^✎ checking the filesystem first/);
+  // Real v4 reasoning is a content block inside assistant/message, not an
+  // assistant/thinking event.
+  await delivery.handleSessionEvent(session, assistantEvent('verbose answer', { seq: 13, reasoning: 'checking the filesystem first' }));
+  assert.deepEqual(bot.messages.slice(-2).map((message) => message.text), [
+    '✎ checking the filesystem first',
+    'verbose answer',
+  ]);
+});
+
+test('[M7] quiet still reports a failed turn from the durable turn/end reason', async (t) => {
+  const { bot, delivery } = await setup(t);
+  const session = { id: 'session-a' };
+
+  await delivery.handleSessionEvent(
+    session,
+    turnEndEvent({ reason: { kind: 'error', error: { message: 'Connection error.', code: 'TRANSPORT' } } }),
+  );
+  assert.deepEqual(bot.messages.map((message) => message.text), ['⚠️ Connection error.']);
+
+  await delivery.handleSessionEvent(session, turnEndEvent({ seq: 21, reason: { kind: 'completed' } }));
+  assert.equal(bot.messages.length, 1, 'a completed turn is not an error');
 });
 
 test('[M7] a higher level still delivers the final answer', async (t) => {

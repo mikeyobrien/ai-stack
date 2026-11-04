@@ -1,4 +1,4 @@
-import { assistantFinalText, userMessageText } from './host.js';
+import { assistantFinalText, assistantReasoningTexts, userMessageText } from './host.js';
 import { oneLine } from './util.js';
 
 /** Prefixes kept short; verbosity decides which digest kinds appear. */
@@ -67,8 +67,10 @@ export class Delivery {
 
     const level = this.store.getVerbosity(binding.chatId, binding.threadId);
 
+    // Every turn in a bound session is watched, including goal/heartbeat turns
+    // that were not preceded by a human user/message.
     if (event.type === 'turn/start') {
-      this.watchdog?.touch(sessionId);
+      this.watchdog?.arm(sessionId);
       return true;
     }
 
@@ -80,10 +82,16 @@ export class Delivery {
       return true;
     }
 
-    const finalText = assistantFinalText(event);
-    if (finalText) {
+    if (event.type === 'assistant/message') {
       this.watchdog?.touch(sessionId);
-      await this.send(binding, finalText);
+      if (level === 'verbose') {
+        for (const reasoning of assistantReasoningTexts(event)) {
+          const digest = oneLine(reasoning, 300);
+          if (digest) await this.send(binding, `${THINKING_PREFIX}${digest}`);
+        }
+      }
+      const finalText = assistantFinalText(event);
+      if (finalText) await this.send(binding, finalText);
       return true;
     }
 
@@ -97,25 +105,15 @@ export class Delivery {
       return true;
     }
 
-    if (event.type === 'assistant/thinking' || event.type === 'assistant/reasoning') {
-      this.watchdog?.touch(sessionId);
-      if (level === 'verbose') {
-        const text = event.data?.text ?? event.data?.reasoning ?? event.data?.summary;
-        const digest = oneLine(text, 300);
-        if (digest) await this.send(binding, `${THINKING_PREFIX}${digest}`);
-      }
-      return true;
-    }
-
     if (event.type === 'turn/end') {
       this.watchdog?.disarm(sessionId);
-      return true;
-    }
-
-    if (event.type === 'turn/error' || event.type === 'session/error' || event.type === 'error') {
-      this.watchdog?.disarm(sessionId);
-      const message = event.data?.message ?? event.data?.error?.message ?? 'turn failed';
-      await this.send(binding, `${ERROR_PREFIX}${oneLine(message, 500)}`);
+      // Real turn failures are durable turn/end reasons, not turn/error events.
+      // Errors are not a verbosity digest: quiet still reports them.
+      const reason = event.data?.reason;
+      if (reason?.kind === 'error') {
+        const message = reason.error?.message ?? reason.message ?? 'turn failed';
+        await this.send(binding, `${ERROR_PREFIX}${oneLine(message, 500)}`);
+      }
       return true;
     }
 

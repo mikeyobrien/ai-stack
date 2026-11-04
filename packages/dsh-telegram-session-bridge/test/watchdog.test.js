@@ -6,7 +6,7 @@ import { TelegramBotApi } from '../src/telegram.js';
 import { Watchdog } from '../src/watchdog.js';
 import { Delivery } from '../src/delivery.js';
 import { FakeBotApi } from './helpers/fake-bot-api.js';
-import { flush, makeTempDir, removeDir, userEvent, waitFor } from './helpers/fixtures.js';
+import { flush, makeTempDir, removeDir, turnEndEvent, turnStartEvent, userEvent, waitFor } from './helpers/fixtures.js';
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 const CHAT = 111;
@@ -112,6 +112,20 @@ test('[M8] unbound sessions are never watched', async (t) => {
   assert.deepEqual(cancels, []);
 });
 
+test('[M8] turn/start arms the watchdog for a turn with no human user message', async (t) => {
+  const { store, bot, watchdog, cancels, scheduler, api } = await setup(t);
+  const delivery = new Delivery({ store, bot: api, logger: silentLogger });
+  delivery.watchdog = watchdog;
+
+  await delivery.handleSessionEvent({ id: 'session-a' }, turnStartEvent({ turn: 7 }));
+  assert.equal(watchdog.isArmed('session-a'), true, 'a goal/heartbeat turn is watched from turn/start');
+
+  await scheduler.advance(TIMEOUT);
+  await waitFor(() => cancels.length === 1);
+  assert.match(bot.messages.at(-1).text, /No activity for 1m/);
+  assert.deepEqual(cancels, ['session-a']);
+});
+
 test('[M8] turn/end disarms the watchdog through the delivery path', async (t) => {
   const { store, bot, watchdog, cancels, scheduler, api } = await setup(t);
   const delivery = new Delivery({ store, bot: api, logger: silentLogger });
@@ -120,7 +134,7 @@ test('[M8] turn/end disarms the watchdog through the delivery path', async (t) =
 
   await delivery.handleSessionEvent(session, userEvent('start a turn'));
   assert.equal(watchdog.isArmed('session-a'), true);
-  await delivery.handleSessionEvent(session, { type: 'turn/end', seq: 20, data: { turn: 1 } });
+  await delivery.handleSessionEvent(session, turnEndEvent({ seq: 20, turn: 1 }));
   assert.equal(watchdog.isArmed('session-a'), false);
 
   await scheduler.advance(TIMEOUT);

@@ -43,18 +43,16 @@ function questionLines(questions) {
 function questionKeyboard(rpcId, questions) {
   const rows = [];
   questions.forEach((question, questionIndex) => {
-    if (question.multiSelect) {
-      const row = (question.options ?? []).map((option, optionIndex) => ({
-        text: option.label,
-        callback_data: `q:${rpcId}:${questionIndex}:${optionIndex}`,
-      }));
-      if (row.length) rows.push(row);
-    } else {
-      const row = (question.options ?? []).slice(0, 3).map((option, optionIndex) => ({
-        text: option.label,
-        callback_data: `q:${rpcId}:${questionIndex}:${optionIndex}`,
-      }));
-      if (row.length) rows.push(row);
+    const options = question.options ?? [];
+    // Every option stays answerable: wrap three per row instead of hiding the
+    // fourth and later options behind a cut.
+    for (let start = 0; start < options.length; start += 3) {
+      rows.push(
+        options.slice(start, start + 3).map((option, offset) => ({
+          text: option.label,
+          callback_data: `q:${rpcId}:${questionIndex}:${start + offset}`,
+        })),
+      );
     }
   });
   if (questions.some((question) => question.multiSelect)) {
