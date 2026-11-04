@@ -74,7 +74,7 @@ load.
 ## Implementation
 
 Status: MVP implemented on branch `ai-stack-dsh-telegram-session-bridge-impl`,
-zero runtime dependencies, `node --test test/` = 50 tests green in under a
+zero runtime dependencies, `node --test test/` = 56 tests green in under a
 second. Design bets from the spike (push envelopes, `session.prompt`, cancel with
 `keepInbox`) are the code's seams; nothing in `~/.local/share/dsh` changed.
 
@@ -84,19 +84,45 @@ second. Design bets from the spike (push envelopes, `session.prompt`, cancel wit
 | `src/bridge.js` | Composition root and lifecycle | One object the tests drive without cordis; `start()` reads `getMe` capabilities then starts the poller; `stop()` aborts the poller and stops the watchdog. |
 | `src/config.js` | Resolve the profile row once at boot | Token only from the env var named by `tokenRef` (dsh-im names rejected); state under `$DSH_HOME/telegram-session-bridge/`; `allowedChatIds` fail-closed; bounded watchdog/poll/chunk/dedupe knobs. |
 | `src/state.js` | Durable side-table, versioned JSON v1 | Atomic tmp+fsync+rename; UNIQUE(session) with idempotent same-pair rebind; `managedMode` provenance (`auto`, `restored`, `new_replaced`); restore-with-replay; offset + inbound dedupe acked in the same write; unknown version refused, corruption quarantined. |
-| `src/delivery.js` | Deterministic delivery from the binding | Outbound address comes from the session's binding, never the model or the last chat; verbosity gates tool/thinking digests; a Telegram-originated prompt is not echoed twice; arms/touches/disarms the watchdog. |
-| `src/interactions.js` | In-host approval/question owner | Claims only bound sessions, one-shot pending map, first `respond`/button wins, later presses stale; unbound requests `next()`; abort resolves cancelled (`ASK_ABORTED` for questions). |
-| `src/watchdog.js` | Stuck-turn recovery | One timer per bound session; no activity for `stallTimeoutMs` → topic notice → host `cancel{keepInbox:true}`; later prompts re-arm; `turn/end` disarms. |
-| `src/commands.js` | Operator surface and prompt ingestion | `/bind`, `/new`, `/unbind`, `/verbosity`, `/sessions`, `/status`, `/help`; `/bind`/`/new` refuse the DM lobby (thread 0); plain text prompts the bound session. |
+| `src/delivery.js` | Deterministic delivery from the binding | Outbound address comes from the session's binding, never the model or the last chat; echoes only `user/message` with `source.kind === 'user'`; verbosity gates tool digests and reasoning-block digests (`assistant/message.content[type=reasoning]`); failed turns are read from `turn/end.reason.kind === 'error'`; arms the watchdog on `turn/start`, touches on activity, disarms on `turn/end`. |
+| `src/interactions.js` | In-host approval/question owner | Claims only bound sessions, one-shot pending map, first `respond`/button wins, later presses stale; unbound requests `next()`; abort resolves cancelled (`ASK_ABORTED` for questions); question options wrap three per keyboard row so none are hidden. |
+| `src/watchdog.js` | Stuck-turn recovery | One timer per bound session; no activity for `stallTimeoutMs` → topic notice → host `cancel{keepInbox:true}`; later turns re-arm; `turn/end` disarms. |
+| `src/commands.js` | Operator surface and prompt ingestion | `/bind`, `/new`, `/unbind`, `/verbosity`, `/sessions`, `/status`, `/help`; `/bind`/`/new` refuse the DM lobby (thread 0); plain text prompts the bound session. It never arms the watchdog itself — the host's `turn/start` is the only arm point, so a prompt that throws cannot leave a timer that later cancels unrelated work. |
 | `src/poller.js` | `getUpdates` long-poll | Ack (dedupe key + offset) is durable before dispatch; dedupe keyed `(chat, thread, message/callback id)` so a restart cannot replay; 409/network failures back off instead of crashing the host. |
 | `src/telegram.js` | Minimal Bot API client over `fetch` | JSON calls with 429 `retry_after` handling; `sendMessage` chunks at the limit; `message_thread_id` omitted for topic 0/General(1), carried for numbered topics. |
 | `src/chunk.js` | 4096-char splitter | Joining chunks reproduces the input; code-point-safe (no split surrogate pair); prefers newline boundaries. |
-| `src/host.js` | Adapter over the host session service | `prompt`/`cancel`/`list`/`page` through the same Remote the GUI uses; extracts visible assistant finals (skips preambles with tool calls, interrupted/non-append events) and replays the last one. |
+| `src/host.js` | Adapter over the host session service | `prompt`/`cancel`/`list`/`page` through the same Remote the GUI uses; visible user text from the v4 `data.content` + `data.source.kind === 'user'` shape; assistant finals (skips preambles with tool calls, interrupted/non-append events); reasoning blocks for verbose digests; replays the last final. `cancel` sends only `{sessionId}` — the 0.2.1 Remote rejects extra fields and applies `keepInbox:true` inside the host. |
 | `src/util.js` | Shared helpers | `sleep` (abortable), `formatDuration`, `oneLine` digest trimming. |
 
 `cordis.patch.yml` inserts the single row `telegram-session-bridge`; operator
 steps (second bot, topics, token env, row config, commands, rollback) are in
 [INSTALL.md](INSTALL.md).
+
+## Durable event shapes (captured from real v4 logs, not invented)
+
+Fixtures and parsers derive from real
+`~/.dsh/sessions/<project>/session.v4.jsonl.zstd` records on 0.2.1-rc.5. The
+shapes that matter:
+
+- `user/message`: the payload **is** the message — `data.content`,
+  `data.source.kind`, `data.role`; there is no `data.message`. Real traffic is
+  dominated by synthetic sources (`runtime-context`, `time-context`,
+  `openclaw-heartbeat`, `skill-catalog`); only `source.kind === 'user'` is a
+  human turn (Telegram-originated prompts also use `user`).
+- `assistant/message`: `data.message.content` is the part array; reasoning is a
+  `{type:'reasoning', text}` block inside it (often followed by
+  `{type:'text'}`). There is no durable `assistant/thinking` event.
+- `turn/end`: failure is `data.reason = {kind:'error', error:{message, code}}`;
+  completion is `{kind:'completed'}`; user/watchdog cancellations are
+  `{kind:'aborted'|'interrupted'}`. There are no durable `turn/error` /
+  `session/error` events.
+
+An earlier revision hand-made fixtures with `data.message` and a fabricated
+`assistant/thinking` event, so M6/M7 were green against payloads the host never
+emits. `test/helpers/fixtures.js` now mirrors the captured records, the tests
+include synthetic-source negative cases, and the M6/M7 tests fail if either
+regression returns. Re-derive fixtures from a live session log before trusting a
+new host version.
 
 ## Coexistence rules (honored in code)
 
@@ -122,12 +148,12 @@ required phrases. Run all: `node --test test/`.
 | --- | --- |
 | M1 — binding store: UNIQUE(session), idempotent rebind, provenance, restore-with-replay, versioned atomic JSON | `[M1] bindings persist as versioned JSON through an atomic tmp+rename`, `[M1] the same topic and session rebind idempotently`, `[M1] one session cannot be linked to two topics (UNIQUE(session))`, `[M1] managed_mode provenance is recorded for auto, restored and new_replaced`, `[M1] restore replays the last assistant message from the host`, `[M1] state and verbosity survive a reload`, `[M1] topic id 0 (the DM lobby) cannot be bound`, `[M1] /new creates and binds a session, replacing the old binding` |
 | M2 — deterministic delivery from the binding, never model-mediated | `[M2] an assistant final is delivered to the bound topic`, `[M2] delivery follows the binding, not the last chat used`, `[M2] an unbound session produces no output at all` |
-| M3 — host wiring: push envelopes, one-shot interaction waterfall, lifecycle | `[M3] apply subscribes to the host push envelopes and drives the real Bot API end to end`, `[M3] an unbound approval falls through next() to the native GUI answerer`, `[M3] disposing the host effect stops the watchdog and its timers`, `[M3] an approval request with no matching approval/asked event falls through` |
+| M3 — host wiring: push envelopes, one-shot interaction waterfall, lifecycle | `[M3] apply subscribes to the host push envelopes and drives the real Bot API end to end`, `[M3] an unbound approval falls through next() to the native GUI answerer`, `[M3] disposing the host effect stops the watchdog and its timers`, `[M3] an approval request with no matching approval/asked event falls through`, `[M3] the bridge cancels through the host session Remote without extra fields` |
 | M4 — safe failure modes: missing token, no eager state, corrupt/future state, unbound lobby | `[M4] a missing token disables the plugin without blocking host boot`, `[M4] loading creates no state and writes nothing until the operator binds`, `[M4] a corrupt state file is quarantined instead of silently overwritten`, `[M4] a future state version is rejected instead of rewritten`, `[M4] unbound lobby text is answered with instructions instead of entering a session` |
-| M5 — approvals and questions claimed, answered once, otherwise fall through | `[M5] a bound approval is claimed from the push envelope and answered once`, `[M5] a bound approval is answered from a Telegram callback through the poller`, `[M5] rejecting is a one-shot rejection outcome`, `[M5] an aborted approval resolves cancelled and stops accepting presses`, `[M5] a bound question returns the selected labels to the host`, `[M5] a multi-select question toggles options and finishes on Done`, `[M5] an aborted question rejects with the host ASK_ABORTED code`, `[M5] an unbound approval falls through next() to the GUI`, `[M5] an unbound question falls through next()` |
-| M6 — transcript parity, no duplicate echo of own prompts | `[M6] web-originated user turns and assistant finals keep transcript parity`, `[M6] a prompt sent from Telegram is not echoed back as a duplicate`, `[M6] a different web turn is still echoed after one own prompt is consumed` |
-| M7 — `/verbosity` per chat/topic, persisted, default quiet, higher levels add digests | `[M7] verbosity defaults to quiet per topic and persists across a reload`, `[M7] quiet delivers finals only; normal adds tool digests; verbose adds thinking digests`, `[M7] a higher level still delivers the final answer`, `[M7] /verbosity persists per topic across a bridge restart` |
-| M8 — stall timeout → notice → `cancel{keepInbox}`, recovery re-arms | `[M8] a stalled turn is notified and cancelled with the inbox kept`, `[M8] activity postpones the stall and a new prompt re-arms after recovery`, `[M8] unbound sessions are never watched`, `[M8] turn/end disarms the watchdog through the delivery path` |
+| M5 — approvals and questions claimed, answered once, otherwise fall through | `[M5] a bound approval is claimed from the push envelope and answered once`, `[M5] a bound approval is answered from a Telegram callback through the poller`, `[M5] rejecting is a one-shot rejection outcome`, `[M5] an aborted approval resolves cancelled and stops accepting presses`, `[M5] a bound question returns the selected labels to the host`, `[M5] a question with more than three options keeps every option answerable`, `[M5] a multi-select question toggles options and finishes on Done`, `[M5] an aborted question rejects with the host ASK_ABORTED code`, `[M5] an unbound approval falls through next() to the GUI`, `[M5] an unbound question falls through next()` |
+| M6 — transcript parity, no duplicate echo of own prompts | `[M6] web-originated user turns and assistant finals keep transcript parity`, `[M6] synthetic loop context is never echoed to the topic`, `[M6] a prompt sent from Telegram is not echoed back as a duplicate`, `[M6] a different web turn is still echoed after one own prompt is consumed` |
+| M7 — `/verbosity` per chat/topic, persisted, default quiet, higher levels add digests | `[M7] verbosity defaults to quiet per topic and persists across a reload`, `[M7] quiet delivers finals only; normal adds tool digests; verbose adds thinking digests`, `[M7] quiet still reports a failed turn from the durable turn/end reason`, `[M7] a higher level still delivers the final answer`, `[M7] /verbosity persists per topic across a bridge restart` |
+| M8 — stall timeout → notice → `cancel{keepInbox}` (host-internal), recovery re-arms | `[M8] a stalled turn is notified and cancelled with the inbox kept`, `[M8] activity postpones the stall and a new prompt re-arms after recovery`, `[M8] unbound sessions are never watched`, `[M8] turn/start arms the watchdog for a turn with no human user message`, `[M8] turn/end disarms the watchdog through the delivery path`, `[M8] a failed prompt leaves no watchdog armed and reports the error` |
 | Transport (supports M1/M6) — chunking, dedupe across restart, topic params, token isolation | `[transport] long assistant text is chunked at the Telegram limit without loss`, `[transport] chunking never splits a surrogate pair`, `[transport] duplicate updates are suppressed across a simulated restart`, `[transport] dedupe keys include both chat and thread`, `[transport] the General topic omits message_thread_id on send, numbered topics keep it`, `[transport] sendMessage and getUpdates carry the real Bot API parameters`, `[transport] tokenRef is an env credential and never dsh-im's bot identity` |
 | Package invariants | `[package] the bridge keeps zero runtime dependencies`, `[M1–M8] every acceptance requirement has a named test` |
 
@@ -147,6 +173,17 @@ dispose, so `src/index.js`'s `effect(() => async () => …)` disposer was droppe
 process open — a one-minute suite that looked merely "slow". The `[M3] disposing
 the host effect…` test pins the contract so a dropped disposer fails fast instead
 of hanging the suite.
+
+**Fixtures come from captured logs.** `test/helpers/fixtures.js` builds
+`user/message`, `assistant/message`, `tool/call` and `turn/end` exactly like the
+v4 records quoted above. Do not invent a payload to make a test pass: replay a
+real session file first and confirm the shape.
+
+**keepInbox is the host's, not the bridge's.** The fake session controller
+records the request the bridge sends (`{sessionId}`) separately from the
+`agent.cancel({kind:'user'},{keepInbox:true})` its real implementation performs
+internally, so `[M3] the bridge cancels through the host session Remote…`
+asserts the bridge's request shape rather than the fake's flag.
 
 No real credentials, no network, and no live DSH instance are needed for the
 tests.

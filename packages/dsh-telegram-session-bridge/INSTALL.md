@@ -144,12 +144,14 @@ In Telegram:
 
 Approvals and questions arrive as cards with inline buttons. The first press
 settles them once; later presses answer "no longer active" and the card is
-edited to the outcome. Unbound sessions' cards stay in the web GUI.
+edited to the outcome. Question options wrap three per row, so every option is
+answerable. Unbound sessions' cards stay in the web GUI.
 
 A bound turn with no session activity for `stallTimeoutMs` posts
 `⌛ No activity for 15m…` and the host cancels the turn keeping the queued
-inbox; the next prompt re-arms the watchdog. Activity extends the timer, and
-`turn/end` disarms it.
+inbox. A turn is watched from its `turn/start` — including goal and heartbeat
+turns that no operator prompt started — and the next turn re-arms it. Activity
+extends the timer, and `turn/end` disarms it.
 
 ## 6. Commands
 
@@ -169,12 +171,13 @@ Verbosity levels (default **quiet**, persisted per `(chat, topic)`):
 
 | Level | Adds |
 | --- | --- |
-| `quiet` | Assistant finals, approvals/questions, errors, the watchdog notice, restore replay. |
+| `quiet` | Assistant finals, approvals/questions, failed-turn warnings (`⚠️ …` from a `turn/end` error reason), the watchdog notice, restore replay. |
 | `normal` | One-line tool-call digests (`⚙ …`). |
-| `verbose` | One-line thinking/reasoning digests (`✎ …`). |
+| `verbose` | One-line reasoning digests (`✎ …`) from the assistant message's reasoning blocks. |
 
-User turns from the web GUI are echoed as `▸ …`; a prompt you sent from
-Telegram is not echoed back twice.
+Human user turns from the web GUI are echoed as `▸ …`; synthetic loop context
+(runtime/time context, heartbeats, skill catalogs) is never echoed, and a prompt
+you sent from Telegram is not echoed back twice.
 
 ## 7. Rollback
 
