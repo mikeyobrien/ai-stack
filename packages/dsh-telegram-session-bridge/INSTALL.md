@@ -177,7 +177,8 @@ Verbosity levels (default **quiet**, persisted per `(chat, topic)`):
 
 Human user turns from the web GUI are echoed as `▸ …`; synthetic loop context
 (runtime/time context, heartbeats, skill catalogs) is never echoed, and a prompt
-you sent from Telegram is not echoed back twice.
+you sent from Telegram is not echoed back twice. An image-only user turn has no
+text to echo (the bridge is text-first), but its final answer still arrives.
 
 ## 7. Rollback
 

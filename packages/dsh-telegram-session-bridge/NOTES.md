@@ -81,7 +81,7 @@ second. Design bets from the spike (push envelopes, `session.prompt`, cancel wit
 | Module | Responsibility | Invariant it owns |
 | --- | --- | --- |
 | `src/index.js` | Cordis entry: `name`, `inject`, `apply(ctx, config)` | Subscribes `session/event`, `approval/request`, `user-questions/request`; an unusable config logs `disabled:` and returns without blocking boot. |
-| `src/bridge.js` | Composition root and lifecycle | One object the tests drive without cordis; `start()` reads `getMe` capabilities then starts the poller; `stop()` aborts the poller and stops the watchdog. |
+| `src/bridge.js` | Composition root and lifecycle | One object the tests drive without cordis; `start()` reads `getMe` capabilities then starts the poller; `stop()` aborts the poller, the host adapter's lifetime signal, and the watchdog. |
 | `src/config.js` | Resolve the profile row once at boot | Token only from the env var named by `tokenRef` (dsh-im names rejected); state under `$DSH_HOME/telegram-session-bridge/`; `allowedChatIds` fail-closed; bounded watchdog/poll/chunk/dedupe knobs. |
 | `src/state.js` | Durable side-table, versioned JSON v1 | Atomic tmp+fsync+rename; UNIQUE(session) with idempotent same-pair rebind; `managedMode` provenance (`auto`, `restored`, `new_replaced`); restore-with-replay; offset + inbound dedupe acked in the same write; unknown version refused, corruption quarantined. |
 | `src/delivery.js` | Deterministic delivery from the binding | Outbound address comes from the session's binding, never the model or the last chat; echoes only `user/message` with `source.kind === 'user'`; verbosity gates tool digests and reasoning-block digests (`assistant/message.content[type=reasoning]`); failed turns are read from `turn/end.reason.kind === 'error'`; arms the watchdog on `turn/start`, touches on activity, disarms on `turn/end`. |
@@ -91,7 +91,7 @@ second. Design bets from the spike (push envelopes, `session.prompt`, cancel wit
 | `src/poller.js` | `getUpdates` long-poll | Ack (dedupe key + offset) is durable before dispatch; dedupe keyed `(chat, thread, message/callback id)` so a restart cannot replay; 409/network failures back off instead of crashing the host. |
 | `src/telegram.js` | Minimal Bot API client over `fetch` | JSON calls with 429 `retry_after` handling; `sendMessage` chunks at the limit; `message_thread_id` omitted for topic 0/General(1), carried for numbered topics. |
 | `src/chunk.js` | 4096-char splitter | Joining chunks reproduces the input; code-point-safe (no split surrogate pair); prefers newline boundaries. |
-| `src/host.js` | Adapter over the host session service | `prompt`/`cancel`/`list`/`page` through the same Remote the GUI uses; visible user text from the v4 `data.content` + `data.source.kind === 'user'` shape; assistant finals (skips preambles with tool calls, interrupted/non-append events); reasoning blocks for verbose digests; replays the last final. `cancel` sends only `{sessionId}` — the 0.2.1 Remote rejects extra fields and applies `keepInbox:true` inside the host. |
+| `src/host.js` | Adapter over the host session service | `prompt`/`cancel`/`list`/`inspect` through the same Remote the GUI uses; one `AbortController` lifetime signal passed to `prompt`, `inspect` and `list`, aborted on `stop()`; history replay uses the cold-safe `inspect` Remote (the `page` fallback was removed — see below); visible user text from the v4 `data.content` + `data.source.kind === 'user'` shape; assistant finals (skips preambles with tool calls, interrupted/non-append events); reasoning blocks for verbose digests; replays the last final. `cancel` sends only `{sessionId}` — the 0.2.1 Remote rejects extra fields and applies `keepInbox:true` inside the host. |
 | `src/util.js` | Shared helpers | `sleep` (abortable), `formatDuration`, `oneLine` digest trimming. |
 
 `cordis.patch.yml` inserts the single row `telegram-session-bridge`; operator
@@ -124,6 +124,41 @@ include synthetic-source negative cases, and the M6/M7 tests fail if either
 regression returns. Re-derive fixtures from a live session log before trusting a
 new host version.
 
+A user turn with no text block (image-only, `content` kinds `["image"]`) is not
+echoed: the bridge is text-first and media is an MVP non-goal. This affected 4 of
+621 real user turns in the sampled logs; the final answer still arrives, only the
+`▸` echo of that input is skipped.
+
+## In-host Remote calls need a signal (0.2.1-rc.5)
+
+The RPC gateway injects the cancellation signal a Remote declares as
+`cancellation: { parameter: 'signal' }` (`dsh-api-remotes` lib/client.js). An
+in-host caller gets no injection, and the implementation does not guard:
+`SessionController.prompt(request, signal)` calls `signal.throwIfAborted()`
+unconditionally (`dsh-api-session-controller` lib/index.js:3219) — as does
+`page(request, signal)` (lib/index.js:1486). Calling `prompt({...})` with one
+argument therefore throws
+`TypeError: Cannot read properties of undefined (reading 'throwIfAborted')` and
+no turn ever starts.
+
+`createHostAdapter` owns one `AbortController` per bridge, passes its signal to
+`prompt`, `inspect` and `list`, and aborts it in `bridge.stop()` so a plugin
+reload cancels in-flight Remote calls. The fake session controller enforces the
+same `signal.throwIfAborted()` contract as the real signature, so a future
+one-argument call fails the suite instead of reaching production;
+`[transport] the host adapter supplies the AbortSignal the session Remotes
+require` pins prompt, the inspect-backed replay, signal identity across calls,
+and the abort on disposal.
+
+`page` is no longer used for the replay, and not because of its signal: its
+`throughSeq` must be the Session's current cursor, which only `inspect` (or a
+follow snapshot) provides, and `page` rejects anything larger as
+`gateway/bad-request … is past cursor …` (lib/index.js:1487). The previous
+fallback sent `throughSeq: Number.MAX_SAFE_INTEGER`, so it could only ever throw,
+and once `inspect` has returned the whole prefix `page` has nothing to add —
+`inspect` is already the cold-safe path for persisted Sessions (lib/index.js:3046).
+Removing the fallback also removed the dead `page` binding and fake method.
+
 ## Coexistence rules (honored in code)
 
 - **Separate identity.** The bridge reads only the token in the env var its
@@ -154,7 +189,7 @@ required phrases. Run all: `node --test test/`.
 | M6 — transcript parity, no duplicate echo of own prompts | `[M6] web-originated user turns and assistant finals keep transcript parity`, `[M6] synthetic loop context is never echoed to the topic`, `[M6] a prompt sent from Telegram is not echoed back as a duplicate`, `[M6] a different web turn is still echoed after one own prompt is consumed` |
 | M7 — `/verbosity` per chat/topic, persisted, default quiet, higher levels add digests | `[M7] verbosity defaults to quiet per topic and persists across a reload`, `[M7] quiet delivers finals only; normal adds tool digests; verbose adds thinking digests`, `[M7] quiet still reports a failed turn from the durable turn/end reason`, `[M7] a higher level still delivers the final answer`, `[M7] /verbosity persists per topic across a bridge restart` |
 | M8 — stall timeout → notice → `cancel{keepInbox}` (host-internal), recovery re-arms | `[M8] a stalled turn is notified and cancelled with the inbox kept`, `[M8] activity postpones the stall and a new prompt re-arms after recovery`, `[M8] unbound sessions are never watched`, `[M8] turn/start arms the watchdog for a turn with no human user message`, `[M8] turn/end disarms the watchdog through the delivery path`, `[M8] a failed prompt leaves no watchdog armed and reports the error` |
-| Transport (supports M1/M6) — chunking, dedupe across restart, topic params, token isolation | `[transport] long assistant text is chunked at the Telegram limit without loss`, `[transport] chunking never splits a surrogate pair`, `[transport] duplicate updates are suppressed across a simulated restart`, `[transport] dedupe keys include both chat and thread`, `[transport] the General topic omits message_thread_id on send, numbered topics keep it`, `[transport] sendMessage and getUpdates carry the real Bot API parameters`, `[transport] tokenRef is an env credential and never dsh-im's bot identity` |
+| Transport (supports M1/M6) — chunking, dedupe across restart, topic params, token isolation, Remote signal | `[transport] long assistant text is chunked at the Telegram limit without loss`, `[transport] chunking never splits a surrogate pair`, `[transport] duplicate updates are suppressed across a simulated restart`, `[transport] dedupe keys include both chat and thread`, `[transport] the General topic omits message_thread_id on send, numbered topics keep it`, `[transport] sendMessage and getUpdates carry the real Bot API parameters`, `[transport] tokenRef is an env credential and never dsh-im's bot identity`, `[transport] the host adapter supplies the AbortSignal the session Remotes require` |
 | Package invariants | `[package] the bridge keeps zero runtime dependencies`, `[M1–M8] every acceptance requirement has a named test` |
 
 ## Test harness
@@ -178,6 +213,12 @@ of hanging the suite.
 `user/message`, `assistant/message`, `tool/call` and `turn/end` exactly like the
 v4 records quoted above. Do not invent a payload to make a test pass: replay a
 real session file first and confirm the shape.
+
+**The fakes enforce the real signatures.** `FakeSessionController.prompt` calls
+`signal.throwIfAborted()` like the 0.2.1-rc.5 prompt Remote does, so a
+one-argument call rejects with the production error instead of silently passing.
+The fake's `inspect` keeps its signal optional, matching the host; the fake has no
+`page` because the bridge no longer calls it.
 
 **keepInbox is the host's, not the bridge's.** The fake session controller
 records the request the bridge sends (`{sessionId}`) separately from the
