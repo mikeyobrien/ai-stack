@@ -1,0 +1,31 @@
+{
+  "name": "dsh-telegram-session-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Thread-per-session Telegram bridge: one DM forum topic per DSH session",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "^0.2.1-rc.5"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: telegram-session-bridge
+      name: dsh-telegram-session-bridge
