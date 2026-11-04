@@ -51,5 +51,4 @@ export async function apply(ctx, config = {}) {
     await bridge.stop();
   });
   await bridge.start();
-  return bridge;
 }
