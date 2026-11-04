@@ -128,6 +128,38 @@ test('[M3] the bridge cancels through the host session Remote without extra fiel
   assert.deepEqual(host.sessionController.cancels.map((entry) => entry.request), [{ sessionId: 'session-1' }]);
 });
 
+test('[transport] the host adapter supplies the AbortSignal the session Remotes require', async (t) => {
+  const { bot, host, config } = await setup(t, {
+    sessions: [{ sessionId: 'session-1', events: [assistantEvent('the restored answer', { seq: 3 })] }],
+  });
+
+  // 0.2.1-rc.5 SessionController.prompt calls signal.throwIfAborted()
+  // unconditionally; the gateway injects that signal for RPC callers, so a
+  // one-argument in-host call is exactly the production TypeError.
+  await assert.rejects(
+    host.sessionController.prompt({ requestId: 'r1', sessionId: 'session-1', mode: 'queue', content: [] }),
+    TypeError,
+  );
+
+  const bridge = await apply(host, config);
+  await bridge.store.bind({ chatId: CHAT, threadId: THREAD, sessionId: 'session-1', managedMode: 'auto' });
+
+  await command(bridge, bot, { updateId: 1, text: 'please continue' });
+  const promptSignal = host.sessionController.promptSignals.at(-1);
+  assert.ok(promptSignal instanceof AbortSignal, 'prompt needs the bridge lifetime signal');
+  assert.equal(promptSignal.aborted, false);
+
+  // Restore-with-replay reads the cold-safe inspect Remote, not page: page's
+  // throughSeq must be the Session's current cursor, which only inspect provides.
+  assert.equal(await bridge.host.readLastAssistant('session-1'), 'the restored answer');
+  const inspectSignal = host.sessionController.inspectSignals.at(-1);
+  assert.equal(inspectSignal, promptSignal, 'one lifetime signal covers every Remote call');
+
+  await host.dispose();
+  assert.equal(promptSignal.aborted, true, 'plugin disposal aborts in-flight Remote calls');
+  await assert.rejects(() => bridge.host.prompt('session-1', 'after stop'), { name: 'AbortError' });
+});
+
 test('[M4] a missing token disables the plugin without blocking host boot', async (t) => {
   const { bot, host, config } = await setup(t);
   delete process.env[ENV_NAME];

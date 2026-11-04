@@ -121,6 +121,7 @@ export async function createBridge({
 
     async stop() {
       abort.abort();
+      host.stop();
       watchdog.stop();
       await poller.stop();
     },

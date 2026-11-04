@@ -6,6 +6,8 @@ export class FakeSessionController {
       events: session.events ?? [],
     }));
     this.prompts = [];
+    this.promptSignals = [];
+    this.inspectSignals = [];
     this.cancels = [];
     this.created = 0;
   }
@@ -14,7 +16,8 @@ export class FakeSessionController {
     this.sessions.push({ sessionId, title, events });
   }
 
-  async list() {
+  async list(_request, signal) {
+    signal?.throwIfAborted();
     return {
       items: this.sessions.map((session) => ({
         sessionId: session.sessionId,
@@ -23,8 +26,16 @@ export class FakeSessionController {
     };
   }
 
-  async prompt(request) {
+  /**
+   * Mirrors `SessionController.prompt(request, signal)`: the real 0.2.1-rc.5
+   * Remote calls `signal.throwIfAborted()` unconditionally, so a one-argument
+   * call throws the same TypeError production saw. The fake must enforce that
+   * or it would accept a contract the host does not have.
+   */
+  async prompt(request, signal) {
+    signal.throwIfAborted();
     this.prompts.push(request);
+    this.promptSignals.push(signal);
     return { accepted: true };
   }
 
@@ -39,18 +50,13 @@ export class FakeSessionController {
     return { accepted: true };
   }
 
-  async inspect(sessionId) {
+  /** `inspect(sessionId, signal)` takes an optional signal in 0.2.1-rc.5. */
+  async inspect(sessionId, signal) {
+    signal?.throwIfAborted();
     const session = this.sessions.find((entry) => entry.sessionId === sessionId);
     if (!session) throw new Error(`session ${sessionId} not found`);
+    this.inspectSignals.push(signal);
     return { events: session.events };
-  }
-
-  async page(request) {
-    const session = this.sessions.find((entry) => entry.sessionId === request.address.sessionId);
-    return {
-      records: (session?.events ?? []).map((event) => ({ type: 'event', event })),
-      hasMore: false,
-    };
   }
 
   async create() {
