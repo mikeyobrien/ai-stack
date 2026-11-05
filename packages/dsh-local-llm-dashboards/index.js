@@ -142,6 +142,8 @@ export class SshTunnel {
 		const child = execFile('ssh', [
 			'-F', '/dev/null',
 			'-o', 'BatchMode=yes',
+			'-o', 'ConnectTimeout=5',
+			'-o', 'ConnectionAttempts=1',
 			'-o', 'ExitOnForwardFailure=yes',
 			'-o', 'ServerAliveInterval=15',
 			'-N',
