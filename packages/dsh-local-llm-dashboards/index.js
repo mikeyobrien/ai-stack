@@ -149,7 +149,7 @@ export class SshTunnel {
 			'-N',
 			'-L', `127.0.0.1:${port}:${this.#target}`,
 			this.#destination,
-		], { timeout: 0 });
+		]);
 		child.on('exit', () => {
 			if (this.#child !== child) return;
 			this.#child = undefined;
