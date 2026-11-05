@@ -40,7 +40,8 @@ test('deploymentCallback sends the exact rendered template through the owner cha
 	const message = calls.followup[0]
 	const text = message.content.filter((part) => part.type === 'text').map((part) => part.text).join('')
 	assert.equal(text, result.text)
-	assert.ok(text.endsWith(CALLBACK_MARKER))
+	assert.ok(text.includes(`\n${CALLBACK_MARKER}\n<!--meta:`))
+	assert.match(text.split('\n').at(-1), /^<!--meta:.*-->$/)
 	assert.ok(!text.includes('123456:'))
 })
 
@@ -54,7 +55,7 @@ test('deploymentCallback steers a running Agent and never cancels or prompts thr
 	assert.equal(calls.cancel, 0)
 	assert.ok(!result.text.includes('123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef'))
 	assert.match(result.text, /\[redacted\]/)
-	assert.ok(result.text.split('\n').length <= 8)
+	assert.ok(result.text.split('\n').filter((line) => !line.startsWith('<!--meta:')).length <= 8)
 })
 
 test('malformed fields still send only the minimal safe form', async () => {

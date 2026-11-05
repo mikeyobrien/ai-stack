@@ -11,6 +11,7 @@
  */
 
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { withMachineMeta } from './machine-meta.js'
 
 /** Cordis plugin name. */
 const DEFAULTS = {
@@ -96,12 +97,25 @@ export function buildDigest({ sessionId, title, endReason, durationMs, prompt, r
 	if (promptText !== '') lines.push(`prompt: ${promptText}`)
 	const resultText = oneLine(result, MAX_RESULT)
 	if (resultText !== '') lines.push(`result: ${resultText}`)
-	return lines.join('\n')
+	return withMachineMeta(lines.join('\n'), {
+		kind: 'pulse',
+		session: sessionId,
+		title: oneLine(title, 120),
+		reason: oneLine(endReason, 80),
+		durationMs: Number.isFinite(durationMs) ? durationMs : null,
+		prompt: promptText,
+		result: resultText,
+	})
 }
 
 /** Bound a combined digest while keeping the literal header first. */
 function boundDigest(text, maxChars) {
 	if (text.length <= maxChars) return text
+	const marker = text.lastIndexOf('\n<!--meta:')
+	if (marker >= 0) {
+		const tail = text.slice(marker)
+		if (tail.length + 1 < maxChars) return `${text.slice(0, maxChars - tail.length - 1)}…${tail}`
+	}
 	return `${text.slice(0, Math.max(0, maxChars - 1))}…`
 }
 

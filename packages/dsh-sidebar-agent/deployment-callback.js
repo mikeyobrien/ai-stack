@@ -8,6 +8,8 @@
  * @module @local/dsh-sidebar-agent/deployment-callback
  */
 
+import { withMachineMeta } from './machine-meta.js'
+
 /** Maximum rendered callback lines, including the automated marker. */
 export const MAX_CALLBACK_LINES = 8
 
@@ -67,5 +69,19 @@ export function formatDeploymentCallback(input) {
 	const gaps = valueOf(input, 'gaps')
 	if (gaps !== '') lines.push(`Gaps: ${gaps}`)
 	lines.push(CALLBACK_MARKER)
-	return lines.slice(0, MAX_CALLBACK_LINES).join('\n')
+	const meta = {
+		kind: 'deployment',
+		title: what,
+		state,
+	}
+	if (changed !== '') meta.changed = changed
+	if (verified !== '') meta.verified = verified
+	if (stateLine !== '') meta.stateLine = stateLine
+	if (live !== '') meta.live = live
+	if (holding !== '') meta.holding = holding
+	if (gaps !== '') meta.gaps = gaps
+	if (typeof input.session === 'string' && input.session.trim() !== '') meta.session = oneLine(input.session, 120)
+	if (typeof input.reason === 'string' && input.reason.trim() !== '') meta.reason = oneLine(input.reason, 80)
+	if (Number.isFinite(input.durationMs)) meta.durationMs = input.durationMs
+	return withMachineMeta(lines.slice(0, MAX_CALLBACK_LINES).join('\n'), meta)
 }

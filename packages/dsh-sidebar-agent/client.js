@@ -242,6 +242,22 @@ window.__ModuleLoader__.load({
 .sa-scrollRegion:focus-visible,.sa-toolDetail:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .sa-reportMeta{color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;margin:0 0 6px;
   overflow-wrap:anywhere}
+.sa-machineCard{min-width:0;max-width:100%;border-left:3px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1);border-radius:8px;padding:2px 10px 8px 8px}
+.sa-machinePulse{border-left-color:var(--dsw-alias-state-success-primary)}
+.sa-machineDeployment{border-left-color:var(--dsw-alias-brand-primary)}
+.sa-machineHeader{display:flex;align-items:center;gap:7px;width:100%;min-height:34px;padding:2px 0;border:none;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer;min-width:0;border-radius:6px}
+.sa-machineKind{flex:none;height:18px;padding:0 6px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:18px;text-transform:uppercase;letter-spacing:0.04em}
+.sa-machinePulse .sa-machineKind{color:var(--dsw-alias-state-success-primary)}
+.sa-machineTitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-weight:500}
+.sa-machineBadge{flex:none;height:18px;padding:0 6px;border-radius:999px;border:0.5px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);font-size:10px;line-height:16px;font-variant-numeric:tabular-nums}
+.sa-machineHeader .sa-toolChevron{margin-left:auto}
+.sa-machineRows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 10px;padding:2px 0 6px;font-size:11px;line-height:16px}
+.sa-machineLabel{color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.sa-machineValue{color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;min-width:0}
+.sa-machineLink{border:none;background:transparent;padding:0;color:var(--dsw-alias-link, var(--dsw-alias-brand-primary));font:inherit;cursor:pointer;text-align:left;overflow-wrap:anywhere}
+.sa-machineBody{border-top:0.5px solid var(--dsw-alias-border-l1);padding-top:7px;margin-top:2px;min-width:0}
+.sa-machineBodyText{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;max-height:260px;overflow:auto;overscroll-behavior:contain}
+.sa-machineCopy{min-height:28px;margin-bottom:4px}
 .sa-muted{color:var(--dsw-alias-label-secondary);font-size:12px;margin:0}
 .sa-failure{color:var(--dsw-alias-state-error-primary);font-size:12px;margin:0}
 .sa-jump{position:absolute;right:16px;bottom:12px;z-index:5;display:inline-flex;align-items:center;gap:5px;
@@ -683,6 +699,95 @@ window.__ModuleLoader__.load({
           tools.map((tool) => h(ToolRow, { key: tool.id, message: tool, t, image, onToggle, nested: true }))) : null);
     }
 
+    const MACHINE_META = /\n<!--meta:([\s\S]*?)-->\s*$/;
+
+    function parseMachineMessage(text) {
+      const source = typeof text === 'string' ? text : '';
+      const match = MACHINE_META.exec(source);
+      if (match === null) return null;
+      let meta;
+      try { meta = JSON.parse(match[1]); } catch { return null; }
+      if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return null;
+      if (meta.kind !== 'pulse' && meta.kind !== 'deployment') return null;
+      return { plain: source.slice(0, match.index), meta };
+    }
+
+    function durationLabel(ms) {
+      if (!Number.isFinite(ms) || ms < 0) return '';
+      const seconds = Math.max(0, Math.round(ms / 1000));
+      if (seconds === 0) return '<1s';
+      return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    }
+
+    function MachineCard({ message, t, ctx, onToggle }) {
+      const [open, setOpen] = React.useState(false);
+      const [copied, setCopied] = React.useState(false);
+      const parsed = parseMachineMessage(message.text);
+      if (parsed === null) return null;
+      const { meta, plain } = parsed;
+      const kind = meta.kind;
+      const title = typeof meta.title === 'string' && meta.title !== ''
+        ? meta.title
+        : (kind === 'pulse' ? 'Pulse' : 'Deployment callback');
+      const reason = typeof meta.reason === 'string' ? meta.reason : '';
+      const duration = durationLabel(meta.durationMs);
+      const status = meta.live || meta.holding || meta.stateLine || meta.state;
+      const rows = [
+        ['Session', meta.session],
+        ['Reason', reason],
+        ['Duration', duration],
+        ['Changed', meta.changed],
+        ['Verified', meta.verified],
+        ['State', meta.stateLine || meta.state],
+        ['Live / holding', meta.live || meta.holding],
+        ['Gaps', meta.gaps],
+        ['Prompt', meta.prompt],
+      ].filter(([, value]) => typeof value === 'string' && value !== '');
+      const bodyId = `sa-machine-body-${message.id}`;
+      const copyPlain = async () => {
+        try {
+          await navigator.clipboard.writeText(plain);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        } catch {
+          setCopied(false);
+        }
+      };
+      return h('div', { className: `sa-machineCard sa-machine${kind === 'pulse' ? 'Pulse' : 'Deployment'}`, 'data-sa-item': '' },
+        h('button', {
+          type: 'button', className: 'sa-machineHeader',
+          'aria-expanded': open, 'aria-controls': open ? bodyId : undefined,
+          'aria-label': `${open ? 'Hide' : 'Show'} ${kind === 'pulse' ? 'Pulse' : 'deployment callback'} details: ${title}`,
+          onClick: (event) => {
+            const item = event.currentTarget.closest('[data-sa-item]');
+            const change = () => setOpen((value) => !value);
+            if (onToggle === undefined) change();
+            else onToggle(item, change);
+          },
+        },
+          h('span', { className: 'sa-machineKind' }, kind === 'pulse' ? 'Pulse' : 'Deployment'),
+          h('span', { className: 'sa-machineTitle', title }, title),
+          reason === '' ? null : h('span', { className: 'sa-machineBadge' }, reason),
+          duration === '' ? null : h('span', { className: 'sa-machineBadge' }, duration),
+          h('span', { className: 'sa-toolChevron', 'aria-hidden': true }, open ? '\u25be' : '\u25b8')),
+        rows.length === 0 ? null : h('div', { className: 'sa-machineRows' },
+          rows.map(([label, value]) => [
+            h('span', { key: `l-${label}`, className: 'sa-machineLabel' }, label),
+            h('span', { key: `v-${label}`, className: 'sa-machineValue' },
+              label === 'Session' && typeof ctx?.uiWorkspace?.openSession === 'function'
+                ? h('button', {
+                  type: 'button', className: 'sa-machineLink',
+                  onClick: () => ctx.uiWorkspace.openSession(value),
+                }, value)
+                : value),
+          ])),
+        open ? h('div', { id: bodyId, className: 'sa-machineBody', role: 'region', 'aria-label': `${title} result` },
+          h('button', { type: 'button', className: 'sa-control sa-machineCopy', onClick: () => void copyPlain() },
+            copied ? t('md.copied') : t('md.copy')),
+          h('div', { className: 'sa-machineBodyText' }, meta.result || plain)) : null,
+        status === undefined || status === '' ? null : null);
+    }
+
     function DelegationReport({ message, t, labels, onToggle }) {
       const [open, setOpen] = React.useState(false);
       const parsed = parseReport(message.text);
@@ -716,11 +821,13 @@ window.__ModuleLoader__.load({
           h(MarkdownBody, { text: parsed.body, labels })) : null);
     }
 
-    function MessageRow({ message, t, image, labels, onToggle }) {
+    function MessageRow({ message, t, image, labels, onToggle, ctx }) {
       if (message.role === 'user') {
         if (message.source === 'delegation') {
           return h(DelegationReport, { message, t, labels, onToggle });
         }
+        const machine = parseMachineMessage(message.text);
+        if (machine !== null) return h(MachineCard, { message, t, ctx, onToggle });
         const attachments = message.attachments ?? [];
         return h('div', { className: 'sa-turn sa-userRow' },
           h('div', { className: 'sa-userBubble' },
@@ -1666,7 +1773,7 @@ window.__ModuleLoader__.load({
                   data.truncated === true ? h('p', { className: 'sa-muted' }, t('earlier')) : null,
                   items.map((item) => item.kind === 'tools'
                     ? h(ActivityGroup, { key: item.id, tools: item.tools, t, image, onToggle: toggleWithoutPin })
-                    : h(MessageRow, { key: item.id, message: item.message, t, image, labels, onToggle: toggleWithoutPin })),
+                    : h(MessageRow, { key: item.id, message: item.message, t, image, labels, onToggle: toggleWithoutPin, ctx })),
                   streaming === null ? null : h('div', { className: 'sa-turn sa-assistant' },
                     h(MarkdownBody, { text: streaming, streaming: true, labels })),
                   error === null || error === undefined ? null : h('p', { className: 'sa-failure', role: 'alert' }, error))),

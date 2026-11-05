@@ -357,6 +357,32 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		assert.equal(await page.locator('.sa-chip').count(), 0)
 	})
 
+	await t.test('machine messages render structured cards without altering plain messages', async () => {
+		await reset()
+		await setScenario('machine')
+		await page.locator('.sa-machineCard').first().waitFor({ state: 'visible' })
+		assert.equal(await page.locator('.sa-machinePulse').count(), 1)
+		assert.equal(await page.locator('.sa-machineDeployment').count(), 1)
+		assert.equal(await page.locator('.sa-machinePulse .sa-machineTitle').innerText(), 'Pulse fixture')
+		assert.match(await page.locator('.sa-machinePulse').innerText(), /completed/)
+		assert.match(await page.locator('.sa-machinePulse').innerText(), /1s/)
+		assert.match(await page.locator('.sa-machinePulse').innerText(), /inspect the pulse card/)
+		assert.equal(await page.locator('.sa-machineBody').count(), 0, 'result section starts collapsed')
+		const pulse = page.locator('.sa-machinePulse')
+		await pulse.locator('.sa-machineHeader').click()
+		await page.waitForTimeout(80)
+		assert.equal(await pulse.locator('.sa-machineBody').count(), 1)
+		assert.match(await pulse.locator('.sa-machineBodyText').innerText(), /pulse result body/)
+		await pulse.getByRole('button', { name: 'Copy' }).click()
+		await page.locator('.sa-machineLink').filter({ hasText: 'session-pulse' }).click()
+		assert.deepEqual((await calls()).openedSessions, ['session-pulse'])
+
+		assert.equal(await page.locator('.sa-userBubble').count(), 2, 'non-meta and malformed-tail messages stay bubbles')
+		assert.match(await page.locator('.sa-userBubble').filter({ hasText: 'plain user message' }).innerText(), /plain user message stays a bubble/)
+		assert.match(await page.locator('.sa-userBubble').filter({ hasText: 'malformed tail' }).innerText(), /<!--meta:\{bad-->/)
+		await page.screenshot({ path: join(outDir, 'fixture-machine-cards.png'), scale: 'css' })
+	})
+
 	await t.test('consecutive calls are one human disclosure; reports are not user bubbles', async () => {
 		await reset()
 		await setScenario('running')

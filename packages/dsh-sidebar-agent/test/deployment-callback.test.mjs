@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CALLBACK_MARKER, formatDeploymentCallback } from '../deployment-callback.js'
+import { CALLBACK_MARKER, formatDeploymentCallback as formatDeploymentCallbackWithMeta } from '../deployment-callback.js'
+
+const stripMachine = (text) => text.replace(/\n<!--meta:[\s\S]*-->$/, '')
+const formatDeploymentCallback = (input) => stripMachine(formatDeploymentCallbackWithMeta(input))
 
 const fields = {
 	what: 'rich /status',
@@ -107,4 +110,18 @@ test('the marker is always present and output never exceeds eight lines', () => 
 		assert.ok(text.endsWith(CALLBACK_MARKER))
 		assert.ok(text.split('\n').length <= 8)
 	}
+})
+
+
+test('callback appends a parseable final machine-meta line', () => {
+	const text = formatDeploymentCallbackWithMeta({ what: 'deploy', state: 'LIVE', changed: 'a', verified: 'b', live: 'c' })
+	const line = text.split('\n').at(-1)
+	assert.match(line, /^<!--meta:.*-->$/)
+	const meta = JSON.parse(line.slice('<!--meta:'.length, -3))
+	assert.equal(meta.kind, 'deployment')
+	assert.equal(meta.title, 'deploy')
+	assert.equal(meta.state, 'LIVE')
+	assert.equal(meta.changed, 'a')
+	assert.equal(meta.verified, 'b')
+	assert.equal(meta.live, 'c')
 })

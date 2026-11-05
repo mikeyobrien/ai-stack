@@ -68,7 +68,9 @@
     }
     return out;
   };
+  const openedSessions = [];
   const ctx = {
+    uiWorkspace: { openSession: (id) => openedSessions.push(id) },
     locale: {
       getSnapshot: () => ({ locale: 'en' }),
       subscribe: () => () => {},
@@ -76,7 +78,7 @@
     },
   };
 
-  const calls = { chat: [], stop: 0, setModel: [], image: 0, settingsRead: 0, saveSettings: [], telegramAdopt: [] };
+  const calls = { chat: [], stop: 0, setModel: [], image: 0, settingsRead: 0, saveSettings: [], telegramAdopt: [], openedSessions };
   const listeners = new Set();
   const baseData = () => ({
     ready: true, title: 'Agent', online: true, running: false,
@@ -96,6 +98,7 @@
 
   let fixtureClock = 0;
   const tick = () => { fixtureClock += 1; return fixtureClock; };
+  const metaTail = (data) => `<!--meta:${JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}-->`;
   const user = (id, text) => ({ id, role: 'user', source: 'user', text, time: tick() });
   const assistant = (id, text) => ({ id, role: 'assistant', text, time: tick() });
   const tool = (id, name, summary, result, isError) => ({ id, role: 'tool', name, summary, result, isError: isError === true, time: tick() });
@@ -127,6 +130,15 @@
         tool('t3', 'grep', 'pattern', '4 matches', true),
       ],
       streaming: 'Streaming fixture reply\u2026', running: true,
+    }),
+    machine: () => setData({
+      messages: [
+        user('m1', `pulse\nsession: session-pulse\ntitle: Pulse fixture\nreason: completed\nduration: 1s\nprompt: inspect the pulse card\nresult: pulse result body\n${metaTail({ kind: 'pulse', session: 'session-pulse', title: 'Pulse fixture', reason: 'completed', durationMs: 1234, prompt: 'inspect the pulse card', result: 'pulse result body' })}`),
+        user('m2', `Gate release: LIVE\nChanged: fixture row\nVerified: fixture tests\nLive: card rendered\n${metaTail({ kind: 'deployment', title: 'Gate release', state: 'LIVE', changed: 'fixture row', verified: 'fixture tests', live: 'card rendered' })}`),
+        user('m3', 'plain user message stays a bubble'),
+        user('m4', 'malformed tail stays plain <!--meta:{bad-->'),
+      ],
+      reports: [], streaming: null, running: false,
     }),
     long: () => setData({ messages: longMessages(), reports: [], streaming: null, running: false }),
     longReport: () => setData({

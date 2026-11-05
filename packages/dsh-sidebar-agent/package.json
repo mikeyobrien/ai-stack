@@ -27,7 +27,8 @@
     "ingress-gate.js",
     "judge.js",
     "decision-log.js",
-    "pulse-feed.js"
+    "pulse-feed.js",
+    "machine-meta.js"
   ],
   "dsh": {
     "bundle": {
