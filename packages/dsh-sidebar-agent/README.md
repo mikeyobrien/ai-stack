@@ -85,13 +85,17 @@ chars), redacted and capped by `pulse.maxDigestChars`. Digests coalesce within
 `pulse.minQuietSeconds` (default 60) and are delivered through the same owner chat channel as
 deployment callbacks (steer while busy, follow-up while idle). The Agent's own session is ignored
 even if listed. Cross-restart dedupe is the persisted `pulseLastSeen` seq map in `state.json`;
-legacy `sponsorLastSeen` is read once. The accepted `sponsors`, `sponsorMinQuietSeconds` and
-`sponsorMaxDigestChars` keys remain back-compat aliases. Empty `pulse.sessions` disables the feed.
+legacy `sponsorLastSeen` is read once. The legacy `sponsors`, `sponsorMinQuietSeconds` and
+`sponsorMaxDigestChars` keys are accepted, but the schema's default `pulse.sessions: []` currently
+shadows them in the resolver; use `pulse.sessions` explicitly until the resolver hot-fix lands. Empty
+`pulse.sessions` disables the feed.
 
 `gate.mode: judge` uses `gate.judge` only when enabled. The client is loopback-only and supports
 OpenAI-compatible `/chat/completions` plus the actual Clef `/v1/systemone` typed-choice endpoint;
 both return the same `{choice,confidence,reason}` shape and fall back to rules on timeout/malformed/
-low-confidence/non-local/disabled. It ships disabled; the local Clef service is documented separately.
+low-confidence/non-local/disabled. It ships disabled by default; the current live profile sets
+`gate.judge.enabled: true` while `gate.mode: rules`, so the judge is configured but not consulted
+until the mode is switched. The local Clef service is documented separately.
 
 ## Configuration
 
@@ -110,7 +114,7 @@ low-confidence/non-local/disabled. It ships disabled; the local Clef service is 
 | `sponsors` / `sponsorMinQuietSeconds` / `sponsorMaxDigestChars` | — | Accepted back-compat aliases for the Pulse keys |
 | `gate.mode` | `rules` | `off` legacy always-steer, `rules`, or `judge` |
 | `gate.judge` | off | `{ enabled:false, url, model, timeoutMs:2500 }`; loopback OpenAI-compatible fallback |
-| `telegram` | off | `{ enabled, tokenRef, allowedChatIds, dshHome, poll, ... }`; dormant in this stage |
+| `telegram` | off | `{ enabled, tokenRef, allowedChatIds, dshHome, poll, ... }`; ships off, but the current live profile enables it and the bridge poller is active |
 
 `title`, `cwd`, `provider`, `model`, and `reasoningEffort` are the live-editable fields of the
 plugin's exported `Config` schema. `dataDir` and `telegram` are ordinary configuration: they are
@@ -149,8 +153,9 @@ send; it never changes model/binding/offset.
 ## Telegram
 
 `telegram-host.js` is the explicit owner seam for the existing Telegram bridge. It is inert by
-default (`enabled: false`): no bridge import, token read, poller, send, or state write occurs. When
-activated by a later coordinated handoff it:
+default (`enabled: false`) and ships with no bridge import, token read, poller, send, or state write.
+The current live profile sets `telegram.enabled: true`, so one bridge-hosted poller is active. When
+activated it:
 
 - lets the existing `createBridge` factory host the single poller (no second bot, poller, or
   store), reusing its HTML rendering, presence, dedupe/offset, delivery, and approval/question
@@ -193,9 +198,10 @@ while the standalone bridge is still running would create two pollers and is not
 `telegram` status reports state, whether it is enabled, the Agent's binding coordinates, and the
 authorized DM candidates only. No token material is returned.
 
-The `agent` Remote exposes `settings`, `saveSettings`, and `telegramAdopt` only; the page never
-receives a token. `telegramAdopt` can only name an existing DM record and always binds this live
-Agent session, never a caller-supplied session id.
+The `agent` Remote exposes the twelve methods listed below: `status`, `delegated`, `catalog`,
+`chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `agentStatus`,
+`deploymentCallback`, `image`, and `stop`. The page never receives a token. `telegramAdopt` can only name an existing DM record and always binds this live Agent
+session, never a caller-supplied session id.
 
 ## Where it attaches
 
@@ -206,7 +212,7 @@ Agent session, never a caller-supplied session id.
 | `conversation.session.header.actions` id `delegated-tag` | `conversation` | The `Delegated` pill beside a delegated session's title |
 | `sidebar.session.row.hover` id `delegated-hover` | `ui-workspace` | The pill in a delegated row's hover card |
 | `sidebar.session.row.leading` id `delegated-mark` | `ui-workspace` | The icon in a delegated row's idle leading cell |
-| Remote namespace `agent` | this plugin | `status`, `delegated`, `catalog`, `chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `image`, `stop` |
+| Remote namespace `agent` | this plugin | `status`, `delegated`, `catalog`, `chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `agentStatus`, `deploymentCallback`, `image`, `stop` |
 
 The page polls `status()` every 1.5 seconds while it is open and refreshes on tab visibility. The chat
 renders the session's current surface — the person's messages, the agent's answers, tool calls with
