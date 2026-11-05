@@ -76,6 +76,18 @@ kill switch. Files bypass the text gate. Every decision appends one bounded reco
 {"ts":"…","session":"…","features":{"pendingQuestion":false,"urgent":false,"explicit":null,"queuedCount":0,"msgLen":42},"choice":"queue","path":"default-queue","latencyMs":1}
 ```
 
+### Pulse feed
+
+`pulse { sessions }` is profile-config-only in v1 (not exposed in the settings UI). For each watched
+session `turn/end`, the sidebar Agent receives one bounded digest with the literal `pulse` header,
+session/title, end reason, duration, last human prompt (≤200 chars) and final assistant text (≤400
+chars), redacted and capped by `pulse.maxDigestChars`. Digests coalesce within
+`pulse.minQuietSeconds` (default 60) and are delivered through the same owner chat channel as
+deployment callbacks (steer while busy, follow-up while idle). The Agent's own session is ignored
+even if listed. Cross-restart dedupe is the persisted `pulseLastSeen` seq map in `state.json`;
+legacy `sponsorLastSeen` is read once. The accepted `sponsors`, `sponsorMinQuietSeconds` and
+`sponsorMaxDigestChars` keys remain back-compat aliases. Empty `pulse.sessions` disables the feed.
+
 `gate.mode: judge` uses `gate.judge` only when enabled. The client is loopback-only and supports
 OpenAI-compatible `/chat/completions` plus the actual Clef `/v1/systemone` typed-choice endpoint;
 both return the same `{choice,confidence,reason}` shape and fall back to rules on timeout/malformed/
@@ -92,6 +104,10 @@ low-confidence/non-local/disabled. It ships disabled; the local Clef service is 
 | `reasoningEffort` | provider default | Effort for the agent's own turns |
 | `delegationStallMs` | `1800000` | No-activity threshold for an armed delegation turn |
 | `delegationStallAutoCancel` | `false` | Opt-in keep-inbox cancel on stall; mark+notify only when false |
+| `pulse.sessions` | `[]` | Watched session ids whose turn completions feed this Agent; empty = off |
+| `pulse.minQuietSeconds` | `60` | Minimum spacing between Pulse digests; multiples coalesce |
+| `pulse.maxDigestChars` | `1200` | Hard cap on one Pulse digest |
+| `sponsors` / `sponsorMinQuietSeconds` / `sponsorMaxDigestChars` | — | Accepted back-compat aliases for the Pulse keys |
 | `gate.mode` | `rules` | `off` legacy always-steer, `rules`, or `judge` |
 | `gate.judge` | off | `{ enabled:false, url, model, timeoutMs:2500 }`; loopback OpenAI-compatible fallback |
 | `telegram` | off | `{ enabled, tokenRef, allowedChatIds, dshHome, poll, ... }`; dormant in this stage |

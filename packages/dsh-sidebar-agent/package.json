@@ -26,7 +26,8 @@
     "deployment-callback.js",
     "ingress-gate.js",
     "judge.js",
-    "decision-log.js"
+    "decision-log.js",
+    "pulse-feed.js"
   ],
   "dsh": {
     "bundle": {

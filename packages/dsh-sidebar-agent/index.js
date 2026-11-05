@@ -25,6 +25,7 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_TELEGRAM_TOKEN_REF, createTelegramHost } from './telegram-host.js'
 import { formatDeploymentCallback } from './deployment-callback.js'
+import { createPulseFeed } from './pulse-feed.js'
 import { createIngressGate } from './ingress-gate.js'
 
 /** Cordis plugin name. */
@@ -76,6 +77,14 @@ export const Config = z.object({
 	reasoningEffort: z.string().volatile(),
 	delegationStallMs: z.number().default(DEFAULT_DELEGATION_STALL_MS),
 	delegationStallAutoCancel: z.boolean().default(false),
+	pulse: z.object({
+		sessions: z.array(z.string()).default([]),
+		minQuietSeconds: z.number().default(60),
+		maxDigestChars: z.number().default(1200),
+	}).default({}),
+	sponsors: z.array(z.string()).default([]),
+	sponsorMinQuietSeconds: z.number().default(60),
+	sponsorMaxDigestChars: z.number().default(1200),
 	gate: z.object({
 		mode: z.string().default('rules'),
 		judge: z.object({
@@ -140,6 +149,30 @@ function telegramOf(value) {
 }
 
 /**
+ * Resolve the pulse block, preferring pulse{sessions,...} and accepting the
+ * accepted sponsor* aliases for back-compat.
+ * @param {unknown} pulseValue - resolved pulse config.
+ * @param {unknown} sponsorSessions - resolved sponsors alias.
+ * @param {unknown} sponsorQuiet - resolved sponsorMinQuietSeconds alias.
+ * @param {unknown} sponsorMax - resolved sponsorMaxDigestChars alias.
+ * @returns {{sessions: string[], minQuietSeconds: number, maxDigestChars: number}} pulse settings.
+ */
+function pulseOf(pulseValue, sponsorSessions, sponsorQuiet, sponsorMax) {
+	const pulse = configValue(pulseValue)
+	const source = pulse !== null && typeof pulse === 'object' && !Array.isArray(pulse) ? pulse : {}
+	const sessionsValue = Array.isArray(source.sessions)
+		? source.sessions
+		: (Array.isArray(configValue(sponsorSessions)) ? configValue(sponsorSessions) : [])
+	const quiet = source.minQuietSeconds ?? configValue(sponsorQuiet)
+	const max = source.maxDigestChars ?? configValue(sponsorMax)
+	return {
+		sessions: sessionsValue.filter((id) => typeof id === 'string' && id.trim() !== '').map((id) => id.trim()),
+		minQuietSeconds: typeof quiet === 'number' && Number.isFinite(quiet) && quiet >= 0 ? quiet : 60,
+		maxDigestChars: Number.isSafeInteger(max) && max >= 200 ? max : 1200,
+	}
+}
+
+/**
  * Resolve the gate block with the same safe defaults the runtime uses.
  * @param {unknown} value - resolved `gate` config.
  * @returns {{mode: 'off'|'rules'|'judge', judge: {enabled: boolean, url: string, model: string, timeoutMs: number}}} gate settings.
@@ -173,6 +206,9 @@ function settingsOf(config) {
 	const reasoningEffort = configValue(config.reasoningEffort)
 	const stallMs = configValue(config.delegationStallMs)
 	const stallAutoCancel = configValue(config.delegationStallAutoCancel)
+	const sponsorValues = configValue(config.sponsors)
+	const sponsorQuiet = configValue(config.sponsorMinQuietSeconds)
+	const sponsorMax = configValue(config.sponsorMaxDigestChars)
 	return {
 		dataDir,
 		cwd,
@@ -182,6 +218,7 @@ function settingsOf(config) {
 		reasoningEffort,
 		stallTimeoutMs: Number.isSafeInteger(stallMs) && stallMs > 0 ? stallMs : DEFAULT_DELEGATION_STALL_MS,
 		stallAutoCancel: stallAutoCancel === true,
+		pulse: pulseOf(config.pulse, sponsorValues, sponsorQuiet, sponsorMax),
 		gate: gateOf(config.gate),
 		telegram: telegramOf(config.telegram),
 	}
@@ -199,6 +236,9 @@ async function loadState(path) {
 		return {
 			sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : undefined,
 			reportDeliveryVersion: Number.isInteger(parsed.reportDeliveryVersion) ? parsed.reportDeliveryVersion : 0,
+			pulseLastSeen: (parsed.pulseLastSeen ?? parsed.sponsorLastSeen) !== null && typeof (parsed.pulseLastSeen ?? parsed.sponsorLastSeen) === 'object' && !Array.isArray(parsed.pulseLastSeen ?? parsed.sponsorLastSeen)
+				? Object.fromEntries(Object.entries(parsed.pulseLastSeen ?? parsed.sponsorLastSeen).filter(([, seq]) => Number.isSafeInteger(seq) && seq >= 0))
+				: {},
 			delegations: Array.isArray(parsed.delegations)
 				? parsed.delegations.map((record) => { sanitizeStallRecord(record); return record })
 				: [],
@@ -2402,6 +2442,11 @@ export function apply(ctx, config = {}) {
 		gate: null,
 		/** Pending-question probe installed by the scoped host. */
 		pendingQuestion: null,
+		/** Sponsored-session digest feed (owner-channel delivery). */
+		pulseFeed: null,
+		pulseFeedReady: null,
+		/** Persisted last turn/end seq per watched session. */
+		pulseLastSeen: {},
 		/** @type {Map<string, any>} */
 		delegations: new Map(),
 		/** The injected Host context the startup and the page read through. */
@@ -2421,6 +2466,7 @@ export function apply(ctx, config = {}) {
 			return {
 				sessionId: runtime.sessionId,
 				reportDeliveryVersion: runtime.reportDeliveryVersion,
+				pulseLastSeen: runtime.pulseLastSeen,
 				delegations: [...runtime.delegations.values()],
 			}
 		},
@@ -2430,6 +2476,20 @@ export function apply(ctx, config = {}) {
 		config: settings.gate,
 		dataDir: settings.dataDir,
 		logger: ctx.logger ?? console,
+	})
+	runtime.pulseFeedReady = createPulseFeed({
+		ctx,
+		runtime,
+		config: settings.pulse,
+		state: { lastSeen: runtime.pulseLastSeen },
+		persist: () => runtime.store.save(runtime.snapshot()),
+		logger: ctx.logger ?? console,
+	}).then((feed) => {
+		runtime.pulseFeed = feed
+		return feed
+	}).catch((error) => {
+		console.warn(`sidebar-agent: pulse feed could not start: ${error?.message ?? error}`)
+		return null
 	})
 	ctx.plugin(agentService(runtime))
 	ctx.effect(() => ctx.on('loader/volatile-update', () => {
@@ -2467,6 +2527,7 @@ export function apply(ctx, config = {}) {
 			void (async () => {
 				const stored = await loadState(join(settings.dataDir, 'state.json'))
 				runtime.reportDeliveryVersion = stored.reportDeliveryVersion ?? 0
+				Object.assign(runtime.pulseLastSeen, stored.pulseLastSeen ?? {})
 				for (const record of stored.delegations) {
 					if (record?.sessionId !== undefined) runtime.delegations.set(record.sessionId, record)
 				}
@@ -2496,6 +2557,7 @@ export function apply(ctx, config = {}) {
 
 		scoped.effect(() => () => {
 			runtime.gate?.dispose?.()
+			void runtime.pulseFeedReady?.then((feed) => feed?.close?.())
 		}, 'sidebar-agent: ingress gate lifecycle')
 
 		scoped.effect(() => scoped.on('agent/assistant-stream', (payload) => {
@@ -2509,6 +2571,7 @@ export function apply(ctx, config = {}) {
 		scoped.effect(() => scoped.on('session/event', (session, event) => {
 			handleDelegationSessionEvent(scoped, runtime, session, event)
 			handleAgentTurnEnd(runtime, session, event)
+			void runtime.pulseFeedReady?.then((feed) => feed?.handle?.(session, event))
 		}), 'sidebar-agent: delegation reports')
 
 		scoped.effect(() => scoped.on('agent/status', (payload) => {
