@@ -6,7 +6,8 @@
 # profile patch when the tunnel should go elsewhere or Prometheus is reachable
 # directly.
 #
-#   baseUrl  Prometheus origin, to skip the tunnel entirely (e.g. http://127.0.0.1:9090)
+#   PROMETHEUS_TARGET  origin override, env first then row config (e.g. http://127.0.0.1:9091)
+#   baseUrl  explicit Prometheus origin, skipped when PROMETHEUS_TARGET is set
 #   ssh      SSH destination for the tunnel (default: mobrienv@reef)
 #   target   remote host:port behind the tunnel (default: 10.43.152.17:9090)
 #   tool     register the `sparks_deployments` tool (default: true)

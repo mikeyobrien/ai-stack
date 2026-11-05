@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { apply, PrometheusMonitor, QUERIES, HISTORY_QUERIES, SshTunnel, fleetState, formatTokens, seriesFor, sparksTool, summarizePrometheus } from '../index.js';
+import { apply, PrometheusMonitor, QUERIES, HISTORY_QUERIES, SshTunnel, fleetState, formatTokens, prometheusOriginOf, seriesFor, sparksTool, summarizePrometheus } from '../index.js';
 
 const NOW = Date.now();
 
@@ -345,3 +345,13 @@ test('live: the tunnel reaches reef Prometheus and every query is valid PromQL t
     tunnel.close();
   }
 });
+
+
+test('PROMETHEUS_TARGET overrides reef first, then baseUrl, then the tunnel', () => {
+  assert.equal(prometheusOriginOf({}, { PROMETHEUS_TARGET: '127.0.0.1:9091' }), 'http://127.0.0.1:9091')
+  assert.equal(prometheusOriginOf({ PROMETHEUS_TARGET: 'http://127.0.0.1:9091/' }, { PROMETHEUS_TARGET: 'http://env:9999' }), 'http://env:9999')
+  assert.equal(prometheusOriginOf({ PROMETHEUS_TARGET: 'http://127.0.0.1:9091/' }), 'http://127.0.0.1:9091')
+  assert.equal(prometheusOriginOf({ prometheusTarget: 'https://local:9091/' }), 'https://local:9091')
+  assert.equal(prometheusOriginOf({ baseUrl: 'http://127.0.0.1:9090/' }), 'http://127.0.0.1:9090')
+  assert.equal(prometheusOriginOf({}), undefined, 'no override keeps the reef tunnel path')
+})

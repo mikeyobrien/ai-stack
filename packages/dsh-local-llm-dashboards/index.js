@@ -44,6 +44,29 @@ const REMOTE_HOSTS = new Set((process.env.DSH_REMOTE_HOSTS ?? '')
 /** Prometheus's own service address inside reef's cluster; only reachable from reef. */
 export const PROMETHEUS_TARGET = '10.43.152.17:9090';
 
+/**
+ * Choose the Prometheus origin with the local override first.
+ *
+ * `PROMETHEUS_TARGET` (environment, then row config) wins over the hardcoded
+ * reef ClusterIP; `baseUrl` remains an explicit direct origin. With neither,
+ * return undefined so `apply` keeps the SSH tunnel and the reef path resumes
+ * automatically when reef returns.
+ * @param {Record<string, any>} config - row configuration.
+ * @param {Record<string, string | undefined>} [env] - environment override.
+ * @returns {string | undefined} normalized origin, or undefined for tunnel.
+ */
+export function prometheusOriginOf(config = {}, env = process.env) {
+	const raw = env.PROMETHEUS_TARGET ?? config.PROMETHEUS_TARGET ?? config.prometheusTarget;
+	if (typeof raw === 'string' && raw.trim() !== '') {
+		const value = raw.trim().replace(/\/+$/, '');
+		return /^https?:\/\//i.test(value) ? value : `http://${value}`;
+	}
+	if (typeof config.baseUrl === 'string' && config.baseUrl.trim() !== '') {
+		return config.baseUrl.trim().replace(/\/+$/, '');
+	}
+	return undefined;
+}
+
 /** Deployment states, worst first, used to rank a fleet. */
 const SEVERITY = ['down', 'degraded', 'busy', 'idle'];
 
@@ -778,13 +801,14 @@ export function sparksTool(monitor) {
 /**
  * Mount the monitor, the `sparks` Remote namespace and the agent tool.
  * @param {import('@deepseek-ai/cordis').Context} ctx - the bundle's Host context.
- * @param {{ baseUrl?: string, ssh?: string, target?: string, tool?: boolean }} [config] - bundle row configuration.
+ * @param {{ baseUrl?: string, PROMETHEUS_TARGET?: string, prometheusTarget?: string, ssh?: string, target?: string, tool?: boolean }} [config] - bundle row configuration.
  */
 export function apply(ctx, config = {}) {
-	const tunnel = config.baseUrl === undefined
+	const override = prometheusOriginOf(config);
+	const tunnel = override === undefined && config.baseUrl === undefined
 		? new SshTunnel(config.ssh ?? 'mobrienv@reef', config.target ?? PROMETHEUS_TARGET)
 		: undefined;
-	const origin = tunnel === undefined ? config.baseUrl : () => tunnel.open();
+	const origin = override ?? (tunnel === undefined ? config.baseUrl : () => tunnel.open());
 	const monitor = new PrometheusMonitor(origin, config.fetch === undefined ? {} : { fetch: config.fetch });
 	// Mounted as a Cordis Service, not provided as a value: only a Service reaches
 	// the Typert Gateway, which is what turns it into the `sparks` Remote
