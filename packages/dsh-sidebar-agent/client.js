@@ -252,6 +252,7 @@ window.__ModuleLoader__.load({
 .sa-jumpDot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-link, var(--dsw-alias-brand-primary));flex:none}
 .sa-composer{flex:none;position:relative;padding:10px clamp(16px,4vw,28px) 14px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .sa-composerColumn{position:relative;box-sizing:border-box;width:100%;max-width:var(--sa-chat-content-width);margin:0 auto;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sa-composerColumn.sa-dragging{outline:1px dashed var(--dsw-alias-brand-primary);outline-offset:4px;border-radius:8px}
 .sa-controls{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .sa-control{height:32px;padding:0 9px;border-radius:8px;border:0.5px solid var(--dsw-alias-border-l2);
   background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;
@@ -859,11 +860,25 @@ window.__ModuleLoader__.load({
     }
 
     function Composer({
-      t, draft, setDraft, files, attach, pasteClipboard, removeFile, send, stop, running, sending, sendError,
+      t, draft, setDraft, files, attach, pasteClipboard, dropFiles, removeFile, send, stop, running, sending, sendError,
       selection, catalogData, catalogError, menuOpen, menuMode, openMenu, closeMenu,
       chooseModel, chooseEffort, inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef,
     }) {
       const composing = React.useRef(false);
+      const [dragging, setDragging] = React.useState(false);
+      const dragOver = (event) => { event.preventDefault(); event.stopPropagation(); setDragging(true); };
+      const dragLeave = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.currentTarget?.contains?.(event.relatedTarget)) return;
+        setDragging(false);
+      };
+      const drop = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragging(false);
+        dropFiles(event);
+      };
       const canSend = (draft.trim() !== '' || files.length > 0) && !sending;
       React.useLayoutEffect(() => {
         const input = inputRef.current;
@@ -879,7 +894,10 @@ window.__ModuleLoader__.load({
       const effortName = effortLabel(catalogData, selection, t);
       return h('div', { className: 'sa-composer' },
         menuOpen ? h('div', { className: 'sa-backdrop', onClick: closeMenu, 'aria-hidden': true }) : null,
-        h('div', { className: 'sa-composerColumn' },
+        h('div', {
+          className: dragging ? 'sa-composerColumn sa-dragging' : 'sa-composerColumn',
+          onDragOver: dragOver, onDragEnter: dragOver, onDragLeave: dragLeave, onDrop: drop,
+        },
           menuOpen ? h(ModelMenu, {
             mode: menuMode, catalog: catalogData, selection, error: catalogError,
             onModel: chooseModel, onEffort: chooseEffort, t, menuRef, onClose: closeMenu,
@@ -924,6 +942,7 @@ window.__ModuleLoader__.load({
               'aria-label': t('placeholder'),
               onChange: (event) => setDraft(event.target.value),
               onPaste: pasteClipboard,
+              onDragOver: dragOver, onDragEnter: dragOver, onDragLeave: dragLeave, onDrop: drop,
               onCompositionStart: () => { composing.current = true; },
               onCompositionEnd: () => { composing.current = false; },
               onKeyDown: (event) => {
@@ -1528,6 +1547,21 @@ window.__ModuleLoader__.load({
         if (rejected > 0) setSendError(t('error.imageType'));
         if (supported.length > 0) void addFiles(supported, { dedupe: true });
       };
+      const dropFiles = (event) => {
+        const data = event.dataTransfer;
+        if (data === null || data === undefined) return;
+        const picked = Array.from(data.files ?? []);
+        if (picked.length === 0) return;
+        const supported = [];
+        let rejected = 0;
+        for (const file of picked) {
+          if (SUPPORTED_IMAGE.test(file.type)) supported.push(pastedImageName(file));
+          else rejected += 1;
+        }
+        setSendError(null);
+        if (rejected > 0) setSendError(t('error.imageType'));
+        if (supported.length > 0) void addFiles(supported, { dedupe: true });
+      };
       const removeFile = (index) => setFiles((current) => current.filter((_, position) => position !== index));
 
       if (data === null) {
@@ -1644,7 +1678,7 @@ window.__ModuleLoader__.load({
                 h('span', null, t('action.latest')),
                 h('span', { 'aria-hidden': true }, '\u2193')) : null),
             h(Composer, {
-              t, draft, setDraft, files, attach, pasteClipboard, removeFile, send, stop: stopAgent, running, sending, sendError,
+              t, draft, setDraft, files, attach, pasteClipboard, dropFiles, removeFile, send, stop: stopAgent, running, sending, sendError,
               selection, catalogData, catalogError, menuOpen, menuMode, openMenu, closeMenu, chooseModel, chooseEffort,
               inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef,
             })),

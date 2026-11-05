@@ -288,6 +288,75 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		assert.equal(await page.locator('.sa-chip').count(), 1)
 	})
 
+	await t.test('composer drag-and-drop reuses the image attachment pipeline', async () => {
+		const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2h8AAAAASUVORK5CYII='
+		const GIF = 'R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+		const dispatchDrop = async ({ target = 'textarea', files = [] } = {}) => page.evaluate(({ target, files }) => {
+			const transfer = new DataTransfer()
+			for (const file of files) {
+				const bytes = file.large === true
+					? new Uint8Array(10 * 1024 * 1024 + 1)
+					: Uint8Array.from(atob(file.base64), (character) => character.charCodeAt(0))
+				transfer.items.add(new File([bytes], file.name, { type: file.type }))
+			}
+			const event = new DragEvent('drop', { bubbles: true, cancelable: true })
+			Object.defineProperty(event, 'dataTransfer', { value: transfer })
+			const node = target === 'column' ? document.querySelector('.sa-composerColumn') : document.querySelector('textarea.sa-input')
+			node.dispatchEvent(event)
+			return { defaultPrevented: event.defaultPrevented }
+		}, { target, files })
+		const dispatchDrag = async (type) => page.evaluate(({ type }) => {
+			const transfer = new DataTransfer()
+			const event = new DragEvent(type, { bubbles: true, cancelable: true })
+			Object.defineProperty(event, 'dataTransfer', { value: transfer })
+			Object.defineProperty(event, 'relatedTarget', { value: type === 'dragleave' ? document.body : null })
+			const node = document.querySelector('textarea.sa-input')
+			node.dispatchEvent(event)
+			return event.defaultPrevented
+		}, { type })
+
+		await reset()
+		await setScenario('idle')
+		assert.equal(await dispatchDrag('dragenter'), true, 'dragenter prevents browser navigation')
+		assert.equal(await page.locator('.sa-composerColumn').evaluate((el) => el.classList.contains('sa-dragging')), true)
+		assert.equal(await dispatchDrag('dragleave'), true)
+		assert.equal(await page.locator('.sa-composerColumn').evaluate((el) => el.classList.contains('sa-dragging')), false)
+
+		await textarea().fill('keep drop text')
+		const imageDrop = await dispatchDrop({ files: [{ name: 'dropped.png', type: 'image/png', base64: PNG }] })
+		assert.equal(imageDrop.defaultPrevented, true, 'drop is consumed')
+		await page.locator('.sa-chip').filter({ hasText: 'dropped.png' }).waitFor({ state: 'visible' })
+		assert.equal(await textarea().inputValue(), 'keep drop text', 'drop keeps the draft text')
+		assert.equal(await page.locator('.sa-chip').count(), 1)
+		assert.equal(await page.getByRole('button', { name: 'Send' }).isEnabled(), true)
+
+		await reset()
+		await setScenario('idle')
+		const multiple = await dispatchDrop({ target: 'column', files: [
+			{ name: 'one.png', type: 'image/png', base64: PNG },
+			{ name: 'two.gif', type: 'image/gif', base64: GIF },
+		] })
+		assert.equal(multiple.defaultPrevented, true)
+		await page.waitForTimeout(200)
+		assert.equal(await page.locator('.sa-chip').count(), 2, 'multiple images drop as chips on the column')
+
+		await reset()
+		await setScenario('idle')
+		await textarea().fill('keep invalid')
+		await dispatchDrop({ files: [{ name: 'scan.tiff', type: 'image/tiff', base64: PNG }] })
+		assert.match(await page.locator('.sa-composer [role="alert"]').innerText(), /PNG, JPEG, WebP, or GIF/)
+		assert.equal(await textarea().inputValue(), 'keep invalid')
+		assert.equal(await page.locator('.sa-chip').count(), 0)
+
+		await reset()
+		await setScenario('idle')
+		await textarea().fill('keep oversized')
+		await dispatchDrop({ files: [{ name: 'huge.png', type: 'image/png', large: true }] })
+		assert.match(await page.locator('.sa-composer [role="alert"]').innerText(), /10 MB/)
+		assert.equal(await textarea().inputValue(), 'keep oversized')
+		assert.equal(await page.locator('.sa-chip').count(), 0)
+	})
+
 	await t.test('consecutive calls are one human disclosure; reports are not user bubbles', async () => {
 		await reset()
 		await setScenario('running')
