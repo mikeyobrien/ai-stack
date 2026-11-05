@@ -19,7 +19,7 @@ function servicesOf(ctx) {
  * blocking DSH boot, so an operator can install it before provisioning the
  * second bot.
  */
-export async function apply(ctx, config = {}) {
+export async function mountBridge(ctx, config = {}) {
   const logger = ctx?.logger ?? console;
   let bridge;
   try {
@@ -51,4 +51,9 @@ export async function apply(ctx, config = {}) {
     await bridge.stop();
   });
   await bridge.start();
+  // The tests drive the bridge object; cordis collects only the effect's own
+  // disposer, so the resolution itself stays unused there.
+  return bridge;
 }
+
+export async function apply(ctx,config={}){await mountBridge(ctx,config); }

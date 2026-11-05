@@ -71,11 +71,12 @@ export class Interactions {
   #byApprovalId = new Map();
   #questions = new Map();
 
-  constructor({ store, bot, logger = console, clock = () => Date.now() } = {}) {
+  constructor({ store, bot, logger = console, clock = () => Date.now(), model = null } = {}) {
     this.store = store;
     this.bot = bot;
     this.logger = logger;
     this.clock = clock;
+    this.model = model;
   }
 
   handleApproval(request, next) {
@@ -220,6 +221,7 @@ export class Interactions {
     try {
       if (kind === 'a' && rpcId) return await this.#handleApprovalCallback(query, rpcId, first);
       if (kind === 'q' && rpcId) return await this.#handleQuestionCallback(query, rpcId, first, second);
+      if (kind === 'm' && this.model !== null) return await this.model.handleCallback(query);
       await this.#answerCallback(query, 'This prompt is no longer active', true);
       return { accepted: false, reason: 'not-pending' };
     } catch (error) {

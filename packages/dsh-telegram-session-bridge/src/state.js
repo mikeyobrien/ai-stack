@@ -28,8 +28,22 @@ export function assertTopicId(threadId) {
   return threadId;
 }
 
+/**
+ * Stable identity of one private-DM surface: bot/account (the bridge bot that
+ * received the update, not the sender's other identity), the chat, and the
+ * human sender. Two users never share a binding even inside the same chat id
+ * namespace; for ordinary DMs sender === chat so the key is the classic
+ * `chat:0` shape and stays readable in the state file.
+ */
+export function dmKey({ botId, chatId, senderId }) {
+  const bot = Number.isSafeInteger(botId) && botId !== 0 ? botId : 0;
+  const chat = Number.isSafeInteger(chatId) ? chatId : NaN;
+  const sender = Number.isSafeInteger(senderId) ? senderId : NaN;
+  return `dm:${bot}:${chat}:${sender}`;
+}
+
 function emptyState() {
-  return { version: STATE_VERSION, bindings: {}, verbosity: {}, offset: 0, dedupe: {}, updatedAt: null };
+  return { version: STATE_VERSION, bindings: {}, dms: {}, verbosity: {}, offset: 0, dedupe: {}, updatedAt: null };
 }
 
 function isPlainObject(value) {
@@ -53,6 +67,33 @@ function normalizeBinding(entry) {
   };
 }
 
+function normalizeDm(entry) {
+  if (!isPlainObject(entry)) return null;
+  if (typeof entry.key !== 'string' || !entry.key.startsWith('dm:')) return null;
+  if (typeof entry.sessionId !== 'string' || !entry.sessionId) return null;
+  // The full identity is persisted so delivery can address the surface without
+  // the Commands layer: bot/account, chat, sender. A legacy record without them
+  // still loads (bot 0) but is unreachable for delivery until re-created.
+  const [, botRaw, chatRaw, senderRaw] = entry.key.split(':');
+  const botId = Number(botRaw);
+  const chatId = Number(chatRaw);
+  const senderId = Number(senderRaw);
+  if (!Number.isSafeInteger(chatId) || !Number.isSafeInteger(senderId)) return null;
+  const managedMode = MANAGED_MODES.includes(entry.managedMode) ? entry.managedMode : 'auto';
+  return {
+    key: entry.key,
+    botId: Number.isSafeInteger(botId) && botId !== 0 ? botId : 0,
+    chatId,
+    senderId,
+    threadId: 0,
+    sessionId: entry.sessionId,
+    previousSessionId: typeof entry.previousSessionId === 'string' && entry.previousSessionId ? entry.previousSessionId : null,
+    managedMode,
+    createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date(0).toISOString(),
+    updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : entry.createdAt ?? new Date(0).toISOString(),
+  };
+}
+
 function normalizeState(parsed) {
   if (!isPlainObject(parsed)) throw new BindingStoreError('state-corrupt', 'state root must be an object');
   if (parsed.version !== STATE_VERSION) {
@@ -68,6 +109,13 @@ function normalizeState(parsed) {
       if (!binding) continue;
       if (pairKey(binding.chatId, binding.threadId) !== key) continue;
       state.bindings[key] = binding;
+    }
+  }
+  if (isPlainObject(parsed.dms)) {
+    for (const [key, entry] of Object.entries(parsed.dms)) {
+      const dm = normalizeDm(entry);
+      if (!dm || dm.key !== key) continue;
+      state.dms[key] = dm;
     }
   }
   if (isPlainObject(parsed.verbosity)) {
@@ -216,17 +264,24 @@ export class BindingStore {
   // ---- bindings -----------------------------------------------------------
 
   listBindings() {
-    return Object.values(this.#assertLoaded().bindings).map((binding) => ({ ...binding }));
+    return [...Object.values(this.#assertLoaded().bindings),...Object.values(this.#assertLoaded().dms).filter(x=>this.activeBotId==null||x.botId===this.activeBotId)].map(x=>({...x}));
   }
 
   getBinding(chatId, threadId = 0) {
+    if(threadId===0){const dm=Object.values(this.#assertLoaded().dms).find(x=>x.chatId===chatId&&(this.activeBotId==null||x.botId===this.activeBotId));return dm?{...dm}:null;}
     const binding = this.#assertLoaded().bindings[pairKey(chatId, assertTopicId(threadId))];
     return binding ? { ...binding } : null;
   }
 
   getBindingForSession(sessionId) {
-    const found = Object.values(this.#assertLoaded().bindings).find((binding) => binding.sessionId === sessionId);
-    return found ? { ...found } : null;
+    const data = this.#assertLoaded();
+    const found = Object.values(data.bindings).find((binding) => binding.sessionId === sessionId);
+    if (found) return { ...found };
+    // DM surfaces are delivery targets too: the record already carries the
+    // full address (bot/account, chat, sender, thread 0).
+    const dm = Object.values(data.dms).find((entry) => entry.sessionId === sessionId&&(this.activeBotId==null||entry.botId===this.activeBotId));
+    if (dm) return { ...dm };
+    return null;
   }
 
   /**
@@ -286,6 +341,79 @@ export class BindingStore {
       delete draft.bindings[key];
       delete draft.verbosity[key];
       return { removed: true, binding: { ...existing } };
+    });
+  }
+
+  // ---- persistent private DMs (thread 0) ----------------------------------
+
+  getDm(key) {
+    const entry = this.#assertLoaded().dms[key];
+    return entry ? { ...entry } : null;
+  }
+
+  /**
+   * Idempotent create-or-adopt for one DM identity. The first caller in a race
+   * creates; everyone else adopts the surviving session without a second host
+   * create. Replacing (mode `new_replaced`) keeps the old session on record in
+   * `previousSessionId` — nothing is deleted, ever.
+   */
+  async setDm({ key, sessionId, mode = 'created' }) {
+    if (typeof key !== 'string' || !key.startsWith('dm:')) {
+      throw new BindingStoreError('bad-dm-key', `dm key must come from dmKey() (got ${JSON.stringify(key)})`);
+    }
+    if (typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new BindingStoreError('bad-session-id', 'sessionId must be a non-empty string');
+    }
+    if (!['created', 'replaced', 'kept'].includes(mode)) {
+      throw new BindingStoreError('bad-dm-mode', `dm mode must be created|replaced|kept (got ${JSON.stringify(mode)})`);
+    }
+    // The identity lives in the key; rederive the address fields from it so the
+    // record can never disagree with its own key.
+    const [, botRaw, chatRaw, senderRaw] = key.split(':');
+    const botId = Number(botRaw);
+    const chatId = Number(chatRaw);
+    const senderId = Number(senderRaw);
+    if (!Number.isSafeInteger(chatId) || !Number.isSafeInteger(senderId)) {
+      throw new BindingStoreError('bad-dm-key', `dm key must encode bot:chat:sender integers (got ${JSON.stringify(key)})`);
+    }
+    return this.#mutate((draft) => {
+      const existing = draft.dms[key];
+      const now = new Date(this.clock()).toISOString();
+      if (existing && existing.sessionId === sessionId) {
+        return { sessionId, created: false, previousSessionId: existing.previousSessionId ?? null, entry: { ...existing } };
+      }
+      draft.dms[key] = {
+        key,
+        botId: Number.isSafeInteger(botId) && botId !== 0 ? botId : 0,
+        chatId,
+        senderId,
+        threadId: 0,
+        sessionId,
+        previousSessionId: mode === 'replaced' ? existing?.sessionId ?? null : existing?.previousSessionId ?? null,
+        managedMode: mode === 'replaced' ? 'new_replaced' : existing?.managedMode === 'new_replaced' ? 'new_replaced' : 'auto',
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      return {
+        sessionId,
+        created: !existing || mode === 'replaced',
+        previousSessionId: draft.dms[key].previousSessionId,
+        entry: { ...draft.dms[key] },
+      };
+    });
+  }
+
+  async unbindDm(key) {
+    if (typeof key !== 'string' || !key.startsWith('dm:')) {
+      throw new BindingStoreError('bad-dm-key', `dm key must come from dmKey() (got ${JSON.stringify(key)})`);
+    }
+    return this.#mutate((draft) => {
+      const existing = draft.dms[key];
+      if (!existing) return { removed: false, entry: null, sessionId: null };
+      delete draft.dms[key];
+      // Deliberately no host deletion: the old session stays on record here and
+      // alive on the host; the next plain text starts a fresh one.
+      return { removed: true, entry: { ...existing }, sessionId: existing.sessionId };
     });
   }
 

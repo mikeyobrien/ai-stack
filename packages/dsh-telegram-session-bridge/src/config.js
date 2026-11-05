@@ -111,3 +111,4 @@ export function resolveConfig(input = {}, env = process.env) {
     poll: input.poll !== false,
   });
 }
+export function botIdFromToken(token){const n=Number(String(token).split(":",1)[0]);return Number.isSafeInteger(n)&&n>0?n:0;}

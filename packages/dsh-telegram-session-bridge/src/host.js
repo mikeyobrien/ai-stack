@@ -105,10 +105,15 @@ export function createHostAdapter(services = {}, { logger = console } = {}) {
   const create = typeof controller?.create === 'function' ? controller.create.bind(controller) : null;
 
   return {
-    async prompt(sessionId, text) {
+    /**
+     * `requestId` is the prompt's idempotency identity. Callers may pin it (the
+     * DM path pins it to the Telegram update identity so a redelivered update
+     * cannot double-prompt); unpinned calls keep the fresh-UUID behavior.
+     */
+    async prompt(sessionId, text, { requestId } = {}) {
       return prompt(
         {
-          requestId: randomUUID(),
+          requestId: typeof requestId === 'string' && requestId ? requestId : randomUUID(),
           sessionId,
           mode: 'queue',
           content: [{ type: 'text', text }],

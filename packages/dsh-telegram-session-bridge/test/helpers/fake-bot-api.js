@@ -1,6 +1,12 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 
+function fakeScopeKey(scope) {
+  if (scope === undefined || scope === null) return 'default';
+  if (scope.type === 'chat') return `chat:${scope.chat_id}`;
+  return scope.type;
+}
+
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
   response.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) });
@@ -13,16 +19,29 @@ function sendJson(response, status, body) {
  * than a mocked method table.
  */
 export class FakeBotApi {
-  constructor({ token = 'bridge-test-token', updates = [], replayAll = false } = {}) {
+  constructor({ token = 'bridge-test-token', updates = [], replayAll = false, rejectParseEntities = 0 } = {}) {
     this.token = token;
     this.updates = [...updates];
     this.replayAll = replayAll;
+    // Number of HTML sends to reject with Telegram's real
+    // 400 "can't parse entities" response before accepting again.
+    this.rejectParseEntities = rejectParseEntities;
     this.hasTopicsEnabled = true;
     this.calls = [];
     this.getUpdatesCalls = [];
     this.messages = [];
     this.edits = [];
     this.callbackAnswers = [];
+    this.chatActions = [];
+    this.reactions = [];
+    this.failedReactions = [];
+    this.commandsByScope = { default: [], all_private_chats: [], all_group_chats: [], all_chat_administrators: [] };
+    this.menuButtons = new Map();
+    this.failSetCommands = false;
+    this.dropCommands = false;
+    // Number of setMessageReaction calls to reject with Telegram's real 400
+    // "message to react not found" response before accepting again.
+    this.failReactions = 0;
     this.messageId = 100;
     this.server = createServer((request, response) => this.#handle(request, response));
   }
@@ -51,6 +70,9 @@ export class FakeBotApi {
     this.messages = [];
     this.edits = [];
     this.callbackAnswers = [];
+    this.chatActions = [];
+    this.reactions = [];
+    this.failedReactions = [];
   }
 
   #handle(request, response) {
@@ -97,7 +119,44 @@ export class FakeBotApi {
           sendJson(response, 200, { ok: true, result });
           return;
         }
+        case 'getMyCommands': {
+          const key = fakeScopeKey(params.scope);
+          const commands = key.startsWith('chat:') ? this.commandsByScope[key] ?? [] : this.commandsByScope[key] ?? [];
+          sendJson(response, 200, { ok: true, result: commands.map((entry) => ({ ...entry })) });
+          return;
+        }
+        case 'setMyCommands': {
+          if (this.failSetCommands) {
+            sendJson(response, 500, { ok: false, error_code: 500, description: 'fixture setMyCommands failure' });
+            return;
+          }
+          if (!this.dropCommands) {
+            const key = fakeScopeKey(params.scope);
+            this.commandsByScope[key] = (params.commands ?? []).map((entry) => ({ ...entry }));
+          }
+          sendJson(response, 200, { ok: true, result: true });
+          return;
+        }
+        case 'getChatMenuButton': {
+          const chatId = params.chat_id;
+          sendJson(response, 200, { ok: true, result: this.menuButtons.get(chatId) ?? { type: 'default' } });
+          return;
+        }
+        case 'setChatMenuButton': {
+          this.menuButtons.set(params.chat_id, params.menu_button ?? { type: 'default' });
+          sendJson(response, 200, { ok: true, result: true });
+          return;
+        }
         case 'sendMessage': {
+          if (params.parse_mode === 'HTML' && this.rejectParseEntities > 0) {
+            this.rejectParseEntities -= 1;
+            sendJson(response, 400, {
+              ok: false,
+              error_code: 400,
+              description: "Bad Request: can't parse entities: Unsupported start tag",
+            });
+            return;
+          }
           this.messages.push({ ...params });
           this.messageId += 1;
           sendJson(response, 200, {
@@ -108,6 +167,26 @@ export class FakeBotApi {
               message_thread_id: params.message_thread_id,
             },
           });
+          return;
+        }
+        case 'sendChatAction': {
+          this.chatActions.push({ ...params });
+          sendJson(response, 200, { ok: true, result: true });
+          return;
+        }
+        case 'setMessageReaction': {
+          if (this.failReactions > 0) {
+            this.failReactions -= 1;
+            this.failedReactions.push({ ...params });
+            sendJson(response, 400, {
+              ok: false,
+              error_code: 400,
+              description: 'Bad Request: message to react not found',
+            });
+            return;
+          }
+          this.reactions.push({ ...params });
+          sendJson(response, 200, { ok: true, result: true });
           return;
         }
         case 'editMessageText': {

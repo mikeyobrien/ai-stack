@@ -1,0 +1,46 @@
+{
+  "name": "@local/dsh-sidebar-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An always-on agent in the left sidebar. Its delegations are sessions in workspaces.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./telegram-host": "./telegram-host.js",
+    "./deployment-callback": "./deployment-callback.js",
+    "./ingress-gate": "./ingress-gate.js",
+    "./judge": "./judge.js",
+    "./decision-log": "./decision-log.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "telegram-host.js",
+    "deployment-callback.js",
+    "ingress-gate.js",
+    "judge.js",
+    "decision-log.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

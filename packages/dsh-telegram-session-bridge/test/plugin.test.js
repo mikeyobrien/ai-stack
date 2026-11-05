@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { apply } from '../src/index.js';
+import { mountBridge as apply } from '../src/index.js';
 import { FakeBotApi } from './helpers/fake-bot-api.js';
 import { FakeHostContext } from './helpers/fake-host.js';
 import {

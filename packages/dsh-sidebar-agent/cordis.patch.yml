@@ -1,0 +1,5 @@
+# An always-on agent in the Host, so its conversation survives page reloads.
+# Its delegations are ordinary sessions in workspaces; no other rows are needed.
+- insert:
+    - id: sidebar-agent
+      name: '@local/dsh-sidebar-agent'

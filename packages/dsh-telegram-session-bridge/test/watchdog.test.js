@@ -82,6 +82,7 @@ test('[M8] a stalled turn is notified and cancelled with the inbox kept', async 
   assert.match(bot.messages[0].text, /No activity for 1m/);
   assert.match(bot.messages[0].text, /queued input is kept/);
   assert.equal(bot.messages[0].message_thread_id, THREAD);
+  assert.equal(bot.messages[0].parse_mode, undefined, 'the stall notice stays plain text');
   assert.deepEqual(cancels, ['session-a']);
   assert.equal(watchdog.isArmed('session-a'), false);
 });

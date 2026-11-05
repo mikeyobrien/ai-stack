@@ -1,12 +1,14 @@
-import { resolveConfig } from './config.js';
+import { resolveConfig, botIdFromToken } from './config.js';
 import { openBindingStore } from './state.js';
 import { TelegramBotApi } from './telegram.js';
 import { UpdatePoller } from './poller.js';
 import { createHostAdapter } from './host.js';
 import { Delivery } from './delivery.js';
 import { Interactions } from './interactions.js';
+import { ModelPicker, registerModelCommands } from './model.js';
+import { Presence } from './presence.js';
 import { Watchdog } from './watchdog.js';
-import { Commands } from './commands.js';
+import { Commands, gateReactionOf } from './commands.js';
 
 /**
  * Compose the bridge outside cordis. This is the seam the tests drive with a
@@ -38,6 +40,11 @@ export async function createBridge({
     maxTextChars: options.maxChunkChars,
   });
   const host = createHostAdapter(services, { logger });
+  // The bot id comes from the token's numeric prefix (Telegram's documented
+  // `<bot-id>:<secret>` shape — the prefix is not a secret) and is confirmed by
+  // `getMe` at start; a confirmed value wins.
+  const botId = botIdFromToken(options.token);
+  store.activeBotId=botId;
   const delivery = new Delivery({ store, bot: api, logger, clock });
   const watchdog = new Watchdog({
     store,
@@ -48,14 +55,37 @@ export async function createBridge({
     logger,
   });
   delivery.watchdog = watchdog;
-  const interactions = new Interactions({ store, bot: api, logger, clock });
+  // Typing presence shares the injectable scheduler so tests can drive the
+  // 4 s refresh deterministically, the same way the watchdog is driven.
+  const presence = new Presence({
+    store,
+    bot: api,
+    logger,
+    ...(scheduler ? { timers: scheduler } : {}),
+  });
+  delivery.presence = presence;
+  const model = services.modelControl === undefined || services.modelControl === null
+    ? null
+    : new ModelPicker({
+      control: services.modelControl,
+      store,
+      bot: api,
+      allowedChatIds: options.allowedChatIds,
+      logger,
+      clock,
+    });
+  const interactions = new Interactions({ store, bot: api, logger, clock, model });
   const commands = new Commands({
     store,
     bot: api,
     host,
     delivery,
+    presence,
     allowedChatIds: options.allowedChatIds,
+    botId,
     logger,
+    model,
+    statusControl: services.statusControl ?? null,
   });
   const abort = new AbortController();
   const poller = new UpdatePoller({
@@ -76,7 +106,11 @@ export async function createBridge({
     delivery,
     interactions,
     watchdog,
+    presence,
     commands,
+    gateReactionOf,
+    model,
+    modelDiscovery: null,
     poller,
     started: false,
     capabilities: null,
@@ -103,6 +137,18 @@ export async function createBridge({
       return poller.pollOnce();
     },
 
+    async registerCommands() {
+      this.modelDiscovery = await registerModelCommands({
+        api,
+        store,
+        control: services.modelControl,
+        allowedChatIds: options.allowedChatIds,
+        logger,
+        clock,
+      });
+      return this.modelDiscovery;
+    },
+
     async start() {
       if (this.started) return;
       this.started = true;
@@ -116,6 +162,14 @@ export async function createBridge({
       } catch (error) {
         logger?.warn?.(`[telegram-session-bridge] getMe failed; continuing: ${error?.message ?? error}`);
       }
+      if (model?.available) {
+        try {
+          await this.registerCommands();
+        } catch (error) {
+          logger?.warn?.(`[telegram-session-bridge] command discovery failed: ${error?.message ?? error}`);
+          this.modelDiscovery = { registered: false, chats: [], error: String(error?.message ?? error) };
+        }
+      }
       if (this.options.poll) void poller.run();
     },
 
@@ -123,6 +177,7 @@ export async function createBridge({
       abort.abort();
       host.stop();
       watchdog.stop();
+      presence.stop();
       await poller.stop();
     },
   };

@@ -6,7 +6,8 @@
   "description": "Thread-per-session Telegram bridge: one DM forum topic per DSH session",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./bridge": "./src/bridge.js"
   },
   "files": [
     "src",

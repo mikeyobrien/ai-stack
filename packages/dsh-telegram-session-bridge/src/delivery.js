@@ -25,6 +25,7 @@ export class Delivery {
     this.logger = logger;
     this.clock = clock;
     this.watchdog = null;
+    this.presence = null;
   }
 
   /** Remember a prompt we sent so its user/message echo is not duplicated. */
@@ -71,6 +72,7 @@ export class Delivery {
     // that were not preceded by a human user/message.
     if (event.type === 'turn/start') {
       this.watchdog?.arm(sessionId);
+      this.presence?.start(sessionId);
       return true;
     }
 
@@ -91,7 +93,15 @@ export class Delivery {
         }
       }
       const finalText = assistantFinalText(event);
-      if (finalText) await this.send(binding, finalText);
+      if (finalText) {
+        // Only the assistant's final answer is rendered as Telegram HTML;
+        // echoes, digests, errors and command replies stay plain text.
+        await this.bot.sendMarkdown({
+          chatId: binding.chatId,
+          threadId: binding.threadId,
+          text: finalText,
+        });
+      }
       return true;
     }
 
@@ -107,6 +117,8 @@ export class Delivery {
 
     if (event.type === 'turn/end') {
       this.watchdog?.disarm(sessionId);
+      // Settles the prompt reaction: ✅ completed, ⚠️ error, 👀 otherwise.
+      await this.presence?.finish(sessionId, event.data?.reason);
       // Real turn failures are durable turn/end reasons, not turn/error events.
       // Errors are not a verbosity digest: quiet still reports them.
       const reason = event.data?.reason;

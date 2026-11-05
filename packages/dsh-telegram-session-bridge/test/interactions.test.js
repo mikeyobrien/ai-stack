@@ -63,6 +63,7 @@ test('[M5] a bound approval is claimed from the push envelope and answered once'
   assert.equal(bot.messages.length, 1);
   assert.match(bot.messages[0].text, /Approval required: bash/);
   assert.equal(bot.messages[0].message_thread_id, THREAD);
+  assert.equal(bot.messages[0].parse_mode, undefined, 'approval cards stay plain text');
 
   const allow = buttonData(bot, 0, 0);
   const first = await interactions.handleCallback(callbackQuery({ data: allow }));
@@ -135,6 +136,7 @@ test('[M5] a bound question returns the selected labels to the host', async (t) 
   const promise = interactions.handleQuestion(questionRequest({ questions }), () => 'native');
   await waitFor(() => bot.messages.length === 1);
   assert.match(bot.messages[0].text, /Which path\?/);
+  assert.equal(bot.messages[0].parse_mode, undefined, 'question cards stay plain text');
 
   const selectB = buttonData(bot, 0, 1);
   const result = await interactions.handleCallback(callbackQuery({ data: selectB }));

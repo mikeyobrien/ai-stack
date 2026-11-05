@@ -164,7 +164,8 @@ Send in the bound topic unless noted.
 | `/unbind` | Detach this topic and drop its verbosity override. |
 | `/verbosity [quiet\|normal\|verbose]` | Read or set the output level for this chat/topic; persists across restarts. Works in the lobby too. |
 | `/sessions` | List host sessions. |
-| `/status` | Current session and verbosity for this topic. |
+| `/status` | Ordinary sessions: current session and verbosity. Sidebar-Agent bindings: model, real context usage (or Unknown), running delegations, busy/idle, binding and verbosity (read-only). |
+| `/model [provider/model]` | Sidebar Agent only: report the current model and show an inline catalog picker, or select a canonical route. Never prompts the model; applies to the next request and survives a reload. |
 | `/help`, `/start` | Command summary. |
 
 Verbosity levels (default **quiet**, persisted per `(chat, topic)`):
@@ -174,6 +175,14 @@ Verbosity levels (default **quiet**, persisted per `(chat, topic)`):
 | `quiet` | Assistant finals, approvals/questions, failed-turn warnings (`⚠️ …` from a `turn/end` error reason), the watchdog notice, restore replay. |
 | `normal` | One-line tool-call digests (`⚙ …`). |
 | `verbose` | One-line reasoning digests (`✎ …`) from the assistant message's reasoning blocks. |
+
+Assistant final answers are sent as Telegram HTML: bold, italic, strike, inline
+code, fenced code (with its language), links, headings and blockquotes render;
+everything else is escaped so it displays literally. Every short operational
+line — the `▸` user echo, `⚙`/`✎` digests, `⚠️` errors, approval and question
+cards, and all `/command` replies — stays plain text. A formatted answer longer
+than 4096 characters is split into balanced chunks, and if Telegram rejects one
+with "can't parse entities" it is retried once as plain text.
 
 Human user turns from the web GUI are echoed as `▸ …`; synthetic loop context
 (runtime/time context, heartbeats, skill catalogs) is never echoed, and a prompt
