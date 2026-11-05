@@ -7,16 +7,73 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${PROFILE:-meta}"
 PI_AGENT_DIR="${PI_AGENT_DIR:-$HOME/.pi/agent}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
+FORCE="${INSTALL_FORCE:-0}"
+DRY_RUN=0
+
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --dry-run) DRY_RUN=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+set -- "${ARGS[@]}"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 install_dsh() {
+  [ -n "$PROFILE" ] || die "set PROFILE to the profile name to install, e.g. PROFILE=meta ./install.sh dsh"
   command -v dsh  >/dev/null 2>&1 || die "dsh is not on PATH"
   command -v pnpm >/dev/null 2>&1 || die "pnpm is not on PATH"
   command -v node >/dev/null 2>&1 || die "node is not on PATH"
 
   local target="$DSH_HOME/profiles/$PROFILE" f
+
+  # Refuse to replace a live profile with one that would drop bundles or
+  # dependencies. The check is read-only and runs before any backup/copy.
+  local guard_status=0
+  if [ -f "$target/package.json" ]; then
+    node - "$target/package.json" "$REPO/dsh/profile/package.json" <<'NODE' || guard_status=$?
+const fs = require('node:fs')
+const [targetPath, repoPath] = process.argv.slice(2)
+const target = JSON.parse(fs.readFileSync(targetPath, 'utf8'))
+const repo = JSON.parse(fs.readFileSync(repoPath, 'utf8'))
+const targetBundles = new Set(target?.dsh?.profile?.bundles ?? [])
+const repoBundles = new Set(repo?.dsh?.profile?.bundles ?? [])
+const targetDeps = new Set(Object.keys(target?.dependencies ?? {}))
+const repoDeps = new Set(Object.keys(repo?.dependencies ?? {}))
+const lostBundles = [...targetBundles].filter((id) => !repoBundles.has(id))
+const lostDeps = [...targetDeps].filter((id) => !repoDeps.has(id))
+const addedBundles = [...repoBundles].filter((id) => !targetBundles.has(id))
+if (lostBundles.length > 0 || lostDeps.length > 0) {
+  console.error('install.sh: target profile would lose entries:')
+  for (const id of lostBundles) console.error('  bundle: ' + id)
+  for (const id of lostDeps) console.error('  dependency: ' + id)
+  console.error('  repo adds: ' + (addedBundles.length === 0 ? '(none)' : addedBundles.join(', ')))
+  process.exit(3)
+}
+NODE
+    if [ "$guard_status" -eq 3 ] && [ "$DRY_RUN" = "1" ]; then
+      say "dry run: target profile would lose entries (see above); no files written"
+      return 0
+    fi
+    if [ "$guard_status" -eq 3 ] && [ "$FORCE" != "1" ]; then
+      die "refusing to overwrite $target; use --force after reviewing the diff"
+    fi
+    if [ "$guard_status" -ne 0 ] && [ "$guard_status" -ne 3 ]; then
+      die "profile guard failed for $target"
+    fi
+  else
+    say "no live profile to compare at $target"
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    say "dry run: would write $target (guard passed)"
+    return 0
+  fi
+
   mkdir -p "$target"
   for f in package.json cordis.patch.yml pnpm-workspace.yaml pnpm-lock.yaml; do
     [ -f "$target/$f" ] && cp -p "$target/$f" "$target/$f.bak-$STAMP"
@@ -116,6 +173,6 @@ case "${1:-all}" in
   all) install_dsh; install_pi ;;
   dsh) install_dsh ;;
   pi)  install_pi ;;
-  -h|--help) say "usage: $0 [all|dsh|pi]" ;;
-  *) die "usage: $0 [all|dsh|pi]" ;;
+  -h|--help) say "usage: [PROFILE=<name>] $0 [all|dsh|pi]"; say "PROFILE names the profile the DSH half writes; it is required for all and dsh." ;;
+  *) die "usage: [PROFILE=<name>] $0 [all|dsh|pi]" ;;
 esac
