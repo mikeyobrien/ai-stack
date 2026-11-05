@@ -1,0 +1,5 @@
+- insert:
+    - id: 3ds-bridge
+      name: '@local/dsh-3ds'
+      config:
+        port: 7080

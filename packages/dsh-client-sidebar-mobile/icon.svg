@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mobile sidebar">
+  <rect x="6" y="10" width="52" height="44" rx="8" fill="none" stroke="#247bbf" stroke-width="3"/>
+  <rect x="6" y="10" width="22" height="44" rx="8" fill="#247bbf" opacity="0.18"/>
+  <path d="M6 26h22M6 34h16M6 42h19" stroke="#247bbf" stroke-width="3" stroke-linecap="round"/>
+  <path d="M34 27h16M34 37h10" stroke="#247bbf" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+</svg>

@@ -1,0 +1,23 @@
+{
+  "name": "@local/dsh-llm-concurrency",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Queue model requests past a provider's concurrency ceiling instead of failing them.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

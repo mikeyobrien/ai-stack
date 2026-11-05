@@ -1,0 +1,9 @@
+# Pushes a Pushover notification when a long agent turn finishes. The summary
+# is generated from the session log: the request, the model's closing words,
+# the tool work, and the time the turn took. Secrets are credential references,
+# not config: set PUSHOVER_TOKEN and PUSHOVER_USER in the credential store or
+# an environment layer. Override this row's `config` from a profile patch to
+# retune the threshold or enable subagent turns.
+- insert:
+    - id: notifier
+      name: '@local/dsh-notifier'

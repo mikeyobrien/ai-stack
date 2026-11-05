@@ -1,0 +1,14 @@
+# Caps simultaneous model requests to a provider that cannot serve more at
+# once; further requests wait for a slot instead of failing.
+#
+# The sparks gateway serves four concurrent generations. Every Session, subagent
+# and one-shot summary on that provider shares those four, so the limit lives
+# here rather than in the subagent count (which measures children, not
+# requests). Override this row's `config` from a profile patch to retune it.
+- insert:
+    - id: llm-concurrency
+      name: '@local/dsh-llm-concurrency'
+      config:
+        rules:
+          - provider: sparks
+            maxInFlight: 4

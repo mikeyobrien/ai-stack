@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Mobile Sidebar",
+    "description": "Shows the navigation column as an overlay drawer on a phone, instead of squeezing the conversation into the leftover width."
+  }
+}

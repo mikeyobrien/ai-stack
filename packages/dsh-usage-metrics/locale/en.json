@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "title": "Metrics",
+    "description": "Successful skill and principle_read tool calls, counted per skill and per principle from the moment this plugin was activated."
+  },
+  "panel": "Metrics",
+  "title": "Metrics",
+  "loading": "…",
+  "empty": "None recorded.",
+  "error.read": "Could not read session metrics.",
+  "action.refresh": "Refresh",
+  "action.refreshing": "Refreshing…",
+  "scope": "Successful skill and principle_read calls since {date}",
+  "section.skills": "Skills",
+  "section.principles": "Principles",
+  "section.none": "None recorded."
+}

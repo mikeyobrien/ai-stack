@@ -1,0 +1,22 @@
+{
+  "name": "@local/dsh-kwgt-feed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone-widget status feed: one tokenless tailnet GET returning DSH session/agent state as flat JSON for KWGT.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

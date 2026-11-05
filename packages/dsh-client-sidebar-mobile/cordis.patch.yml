@@ -1,0 +1,3 @@
+- insert:
+    - id: sidebar-mobile
+      name: '@local/dsh-client-sidebar-mobile'

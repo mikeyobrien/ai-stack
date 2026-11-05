@@ -1,0 +1,15 @@
+# The Sparks page reads Prometheus, where the Sparks' model serving lands.
+#
+# Prometheus is a ClusterIP service inside reef's k3s, so the Host reaches it
+# through a private SSH tunnel (`ssh -N -L`) to reef: a loopback port on this
+# machine, nothing listening on reef's network. Override `config` from a
+# profile patch when the tunnel should go elsewhere or Prometheus is reachable
+# directly.
+#
+#   baseUrl  Prometheus origin, to skip the tunnel entirely (e.g. http://127.0.0.1:9090)
+#   ssh      SSH destination for the tunnel (default: mobrienv@reef)
+#   target   remote host:port behind the tunnel (default: 10.43.152.17:9090)
+#   tool     register the `sparks_deployments` tool (default: true)
+- insert:
+    - id: sparks
+      name: '@local/dsh-local-llm-dashboards'

@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "3DS Link",
+    "description": "Pair a modded New 3DS XL by QR code and drive sessions by voice, text, or handwriting."
+  },
+  "section": {
+    "label": "3DS Link",
+    "waiting": "No console paired",
+    "seen": "Console seen",
+    "offline": "Bridge offline",
+    "url": "Address",
+    "scan": "Scan this code with DSH Link"
+  }
+}

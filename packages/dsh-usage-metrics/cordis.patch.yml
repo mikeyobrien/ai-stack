@@ -1,0 +1,6 @@
+# The Metrics panel: successful skill and principle_read calls, counted live
+# from activation. The Host listens to the session event feed; the Client
+# renders the sidebar entry and the panel, and nothing else crosses over.
+- insert:
+    - id: usage-metrics
+      name: '@local/dsh-usage-metrics'

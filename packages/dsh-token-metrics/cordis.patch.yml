@@ -1,0 +1,3 @@
+- insert:
+  - id: token-metrics
+    name: '@local/dsh-token-metrics'

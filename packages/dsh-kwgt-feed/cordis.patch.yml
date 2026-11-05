@@ -1,0 +1,4 @@
+# Serves /kwgt/feed.json for phone widgets; no config, no client bundle.
+- insert:
+    - id: kwgt-feed
+      name: '@local/dsh-kwgt-feed'

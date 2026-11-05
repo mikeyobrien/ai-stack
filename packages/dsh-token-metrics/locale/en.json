@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "title": "Token Metrics",
+    "description": "Token usage of every model call, rolled up by model from the moment this plugin was activated."
+  },
+  "panel": "Token Metrics",
+  "title": "Token Metrics",
+  "loading": "…",
+  "empty": "No calls recorded.",
+  "error.read": "Could not read token metrics.",
+  "action.refresh": "Refresh",
+  "action.refreshing": "Refreshing…",
+  "scope": "Model calls since {date}",
+  "section.totals": "Totals",
+  "section.models": "By model",
+  "section.none": "None recorded.",
+  "col.model": "Model",
+  "col.calls": "Calls",
+  "col.input": "Input",
+  "col.cache": "Cache read",
+  "col.output": "Output",
+  "col.total": "Total"
+}

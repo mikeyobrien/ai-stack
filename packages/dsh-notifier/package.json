@@ -1,0 +1,29 @@
+{
+  "name": "@local/dsh-notifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pushover notification with a summary generated from the session log when a long agent turn finishes.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "summary.js",
+    "pushover.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

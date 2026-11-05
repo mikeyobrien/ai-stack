@@ -13,3 +13,7 @@ research/
 
 # Session backlog state is per machine, not per clone.
 .agents/backlog.json
+
+# Generated TLA/TLC and browser evidence output
+states/
+.playwright-mcp/

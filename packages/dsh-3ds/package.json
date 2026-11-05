@@ -1,0 +1,44 @@
+{
+  "name": "@local/dsh-3ds",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pair a modded New 3DS XL by QR code and drive DSH sessions by voice, text, or handwriting.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "vendor/qrcode.cjs",
+    "vendor/qrcode.LICENSE",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "3ds/Makefile",
+    "3ds/build.sh",
+    "3ds/README.md",
+    "3ds/icon.png",
+    "3ds/source",
+    "3ds/vendor"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

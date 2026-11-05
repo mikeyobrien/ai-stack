@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "title": "Model Labels",
+    "description": "Marks models served on this machine as Local and models served in a cluster as Remote in the composer's model selector."
+  },
+  "label.local": "Local",
+  "label.remote": "Remote"
+}

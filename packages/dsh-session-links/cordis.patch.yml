@@ -1,0 +1,6 @@
+# Shareable links to chat threads. The Client half opens the session named by a
+# `?session=<id>` query or a `#dsh-session:<id>` fragment; the Host half serves
+# the `session_link` tool that builds those links.
+- insert:
+    - id: session-links
+      name: '@local/dsh-session-links'

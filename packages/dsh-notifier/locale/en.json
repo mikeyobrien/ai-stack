@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Notifier",
+    "description": "Pushover push with a generated summary when a long agent turn finishes."
+  }
+}

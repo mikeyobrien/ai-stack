@@ -1,0 +1,6 @@
+# Tags the composer's model selector: Local for a model served on this machine,
+# Remote for one served in a cluster. Which hosts count as local is the
+# Client module's list, not a profile field.
+- insert:
+    - id: model-labels
+      name: '@local/dsh-model-labels'
