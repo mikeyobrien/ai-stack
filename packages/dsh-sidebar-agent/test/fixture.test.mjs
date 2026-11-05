@@ -734,6 +734,50 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		await page.setViewportSize({ width: 1000, height: 720 })
 	})
 
+	await t.test('transcript and composer match the live native column at 1920/1280', async () => {
+		await reset()
+		await setScenario('idle')
+		const sanity = { 1920: 920, 1280: 680 }
+		const measure = () => page.evaluate(() => {
+			const content = (selector) => {
+				const element = document.querySelector(selector)
+				const style = getComputedStyle(element)
+				const rect = element.getBoundingClientRect()
+				return Math.round(rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight))
+			}
+			const pageWidth = document.querySelector('.sa-page').getBoundingClientRect().width
+			document.querySelector('#native-probe').style.setProperty('--dsh-conversation-column-width', `${pageWidth}px`)
+			return {
+				native: content('#native-probe .EvIC1a_column'),
+				transcript: content('.sa-column'),
+				composer: content('.sa-composerColumn'),
+				scrollWidth: document.documentElement.scrollWidth,
+				innerWidth,
+			}
+		})
+		for (const [width, expected] of Object.entries(sanity)) {
+			await page.setViewportSize({ width: Number(width), height: 900 })
+			await page.waitForTimeout(100)
+			const measured = await measure()
+			assert.equal(measured.native, expected, `native live column sanity at ${width}px`)
+			assert.equal(measured.transcript, measured.native, `transcript matches native at ${width}px`)
+			assert.equal(measured.composer, measured.native, `composer matches native at ${width}px`)
+			assert.ok(measured.scrollWidth <= measured.innerWidth + 1)
+		}
+		// Pre-change fixture content widths at the 280px-rail breakpoint: 366/296. Width change must not alter them.
+		const mobile = { 390: 366, 320: 296 }
+		for (const [width, expected] of Object.entries(mobile)) {
+			await page.setViewportSize({ width: Number(width), height: 720 })
+			await page.waitForTimeout(100)
+			const measured = await measure()
+			assert.equal(measured.transcript, expected, `mobile transcript unchanged at ${width}px`)
+			assert.equal(measured.composer, expected, `mobile composer unchanged at ${width}px`)
+			assert.ok(measured.scrollWidth <= measured.innerWidth + 1, `no overflow at ${width}px`)
+			await page.screenshot({ path: join(outDir, `fixture-width-${width}.png`), scale: 'css' })
+		}
+		await page.setViewportSize({ width: 1000, height: 720 })
+	})
+
 	await t.test('no uncaught browser errors', () => {
 		assert.deepEqual(consoleErrors, [])
 	})

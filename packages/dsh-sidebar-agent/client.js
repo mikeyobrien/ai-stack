@@ -146,7 +146,7 @@ window.__ModuleLoader__.load({
     // keeps prose readable in a maximized 1000px panel; the surrounding width
     // stays available to code and tables, which scroll inside their own block.
     const CSS = `
-.sa-page{box-sizing:border-box;height:100%;display:flex;flex-direction:column;position:relative;min-height:0;
+.sa-page{--sa-chat-content-width:clamp(680px,64%,920px);box-sizing:border-box;height:100%;display:flex;flex-direction:column;position:relative;min-height:0;
   color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:14px;line-height:1.6;
   --sa-md-base:14px;--sa-md-line:24px;--sa-md-h1:21px;--sa-md-h1-line:30px;--sa-md-h2:19px;--sa-md-h2-line:28px;
   --sa-md-h3:18px;--sa-md-h3-line:26px;--sa-md-table:13px;--sa-md-table-line:22px;--sa-md-code:12px;--sa-md-code-line:19px;
@@ -172,7 +172,7 @@ window.__ModuleLoader__.load({
 .sa-state{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:12px;flex:none}
 .sa-transcriptWrap{position:relative;flex:1;min-height:0;display:flex}
 .sa-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
-.sa-column{box-sizing:border-box;width:100%;max-width:660px;margin:0 auto;padding:20px 20px 14px;
+.sa-column{box-sizing:border-box;width:100%;max-width:calc(var(--sa-chat-content-width) + 40px);margin:0 auto;padding:20px 20px 14px;
   display:flex;flex-direction:column;gap:18px;min-width:0}
 .sa-turn{min-width:0}
 .sa-userRow{display:flex;justify-content:flex-end;min-width:0}
@@ -251,7 +251,7 @@ window.__ModuleLoader__.load({
 .sa-jump:hover{background:var(--dsw-alias-bg-layer-2)}
 .sa-jumpDot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-link, var(--dsw-alias-brand-primary));flex:none}
 .sa-composer{flex:none;position:relative;padding:10px clamp(16px,4vw,28px) 14px;border-top:0.5px solid var(--dsw-alias-border-l1)}
-.sa-composerColumn{position:relative;box-sizing:border-box;width:100%;max-width:660px;margin:0 auto;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sa-composerColumn{position:relative;box-sizing:border-box;width:100%;max-width:var(--sa-chat-content-width);margin:0 auto;display:flex;flex-direction:column;gap:8px;min-width:0}
 .sa-controls{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .sa-control{height:32px;padding:0 9px;border-radius:8px;border:0.5px solid var(--dsw-alias-border-l2);
   background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;

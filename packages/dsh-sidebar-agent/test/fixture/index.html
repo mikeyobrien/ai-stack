@@ -45,12 +45,21 @@
   html, body { margin: 0; padding: 0; height: 100%; background: var(--dsw-alias-bg-base); }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
   #panel { width: 100%; max-width: 1000px; height: 100vh; margin: 0 auto; }
+  /* At desktop the real app reserves 280px for the sidebar; simulate that conversation column. */
+  @media (min-width: 1280px) { #panel { width: calc(100vw - 280px); max-width: none; } }
+  /* Native-conversation probe: uses the native class and token formula, measured live by the test. */
+  #native-probe {
+    --dsh-chat-content-width: clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * .64), 920px);
+    position: absolute; left: -10000px; top: 0; width: 100%; visibility: hidden; pointer-events: none;
+  }
+  #native-probe .EvIC1a_column { max-width: var(--dsh-chat-content-width); width: 100%; margin: 0 auto; }
   .fx-md { white-space: pre-wrap; }
   .fx-dot { display: inline-block; border-radius: 50%; background: currentColor; flex: none; }
 </style>
 </head>
 <body>
 <div id="panel"></div>
+<div id="native-probe" aria-hidden="true"><div class="EvIC1a_column"></div></div>
 <script src="/vendor/react.development.js"></script>
 <script src="/vendor/react-dom.development.js"></script>
 <script>
