@@ -1,0 +1,42 @@
+{
+  "name": "@local/dsh-artifact-library",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Library: find and read research, designs, reports and their HTML editions across projects, with pinned items, local search, revisions and origin links.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./store": "./store.js",
+    "./security": "./security.js",
+    "./render": "./render.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "store.js",
+    "security.js",
+    "render.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

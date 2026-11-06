@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "title": "Artifact Library",
+    "description": "Find and read research, designs, reports and their HTML editions across projects, with pinned items, local search, revisions and origin links."
+  },
+  "panel": "Artifact Library",
+  "title": "Library",
+  "loading": "Loading…",
+  "empty": "Nothing here yet.",
+  "error.read": "The Library could not be read.",
+  "error.notfound": "This artifact is not in the Library.",
+  "error.session": "That session is not available.",
+  "action.refresh": "Refresh",
+  "action.refreshing": "Refreshing…",
+  "action.pin": "Pin",
+  "action.unpin": "Unpin",
+  "section.pinned": "Pinned",
+  "section.expected": "Expected outputs",
+  "section.origin": "Origin",
+  "availability.original": "Original",
+  "availability.snapshot": "Saved copy",
+  "availability.missing": "Original deleted; showing the saved copy",
+  "expected.delivered": "Delivered",
+  "expected.notdelivered": "Not delivered",
+  "kind.report": "Report",
+  "kind.design": "Design",
+  "kind.research": "Research",
+  "kind.html": "HTML",
+  "kind.text": "Text",
+  "hint.search": "Search",
+  "hint.project": "Project",
+  "hint.all": "All projects"
+}

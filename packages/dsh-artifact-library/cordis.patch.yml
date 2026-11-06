@@ -1,0 +1,6 @@
+# The Library panel: curated artifact collections across projects.
+# The Host owns the registry, snapshots and safe readers; the Client renders
+# the sidebar entry, list and reader. No other package is touched.
+- insert:
+    - id: artifact-library
+      name: '@local/dsh-artifact-library'
