@@ -3,7 +3,7 @@
  *
  * The gate owns the delivery decision, FIFO queue and bounded decision log.
  * Message text is used for the decision and is never written to the log.
- * @module @local/dsh-sidebar-agent/ingress-gate
+ * @module @local/dsh-mov-agent/ingress-gate
  */
 
 import { createUserMessage } from '@deepseek-ai/dsh-llm'

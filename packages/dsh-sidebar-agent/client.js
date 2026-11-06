@@ -9,11 +9,11 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'agent';
     const EN = {
       meta: {
-        title: 'Agent',
-        description: 'An always-on agent in the left sidebar. Its delegations are sessions in workspaces.',
+        title: 'mAgent',
+        description: 'mAgent — an always-on agent in the left sidebar. Its delegations are sessions in workspaces.',
       },
-      panel: 'Agent',
-      title: 'Agent',
+      panel: 'mAgent',
+      title: 'mAgent',
       transcript: 'Conversation',
       loading: 'Starting Agent\u2026',
       offline: 'Offline',
@@ -126,6 +126,10 @@ window.__ModuleLoader__.load({
         { id: ID + '#delegated', service: 'agent', namespace: 'agent', method: 'delegated',
           invocation: { kind: 'direct' }, parameters: [], result: codec },
         { id: ID + '#stop', service: 'agent', namespace: 'agent', method: 'stop',
+          invocation: { kind: 'direct' }, parameters: [], result: codec },
+        { id: ID + '#compact', service: 'agent', namespace: 'agent', method: 'compact',
+          invocation: { kind: 'direct' }, parameters: [], result: codec },
+        { id: ID + '#newConversation', service: 'agent', namespace: 'agent', method: 'newConversation',
           invocation: { kind: 'direct' }, parameters: [], result: codec },
       ] };
     }
@@ -268,6 +272,9 @@ window.__ModuleLoader__.load({
 .sa-jumpDot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-link, var(--dsw-alias-brand-primary));flex:none}
 .sa-composer{flex:none;position:relative;padding:10px clamp(16px,4vw,28px) 14px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .sa-composerColumn{position:relative;box-sizing:border-box;width:100%;max-width:var(--sa-chat-content-width);margin:0 auto;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sa-confirm{position:fixed;z-index:30;left:50%;top:20%;transform:translateX(-50%);width:min(92vw,520px);background:var(--dsw-alias-bg-layer-1);border:0.5px solid var(--dsw-alias-border-l2);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgb(0 0 0 / .35)}
+.sa-confirm p{margin:0 0 14px;font-size:13px;line-height:20px}
+.sa-confirmActions{display:flex;gap:8px;justify-content:flex-end}
 .sa-composerColumn.sa-dragging{outline:1px dashed var(--dsw-alias-brand-primary);outline-offset:4px;border-radius:8px}
 .sa-controls{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .sa-control{height:32px;padding:0 9px;border-radius:8px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -719,8 +726,13 @@ window.__ModuleLoader__.load({
       return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
     }
 
+    function workspaceOf(ctx) {
+      try { return ctx?.uiWorkspace; } catch { return undefined; }
+    }
+
     function MachineCard({ message, t, ctx, onToggle }) {
       const [open, setOpen] = React.useState(false);
+      const workspace = workspaceOf(ctx);
       const [copied, setCopied] = React.useState(false);
       const parsed = parseMachineMessage(message.text);
       if (parsed === null) return null;
@@ -774,10 +786,10 @@ window.__ModuleLoader__.load({
           rows.map(([label, value]) => [
             h('span', { key: `l-${label}`, className: 'sa-machineLabel' }, label),
             h('span', { key: `v-${label}`, className: 'sa-machineValue' },
-              label === 'Session' && typeof ctx?.uiWorkspace?.openSession === 'function'
+              label === 'Session' && typeof workspace?.openSession === 'function'
                 ? h('button', {
                   type: 'button', className: 'sa-machineLink',
-                  onClick: () => ctx.uiWorkspace.openSession(value),
+                  onClick: () => workspace.openSession(value),
                 }, value)
                 : value),
           ])),
@@ -1249,7 +1261,7 @@ window.__ModuleLoader__.load({
       }, ...children);
     }
 
-    function AgentChat({ useChat, refresh, chat, catalog, setModel, settings, saveSettings, telegramAdopt, image, stop, ctx }) {
+    function AgentChat({ useChat, refresh, chat, catalog, setModel, settings, saveSettings, telegramAdopt, image, stop, compact, newConversation, ctx }) {
       const t = useTranslate(ctx);
       const snapshot = useChat((value) => value);
       const { status, data, error } = snapshot;
@@ -1266,6 +1278,8 @@ window.__ModuleLoader__.load({
       const [hasNew, setHasNew] = React.useState(false);
       const [stopped, setStopped] = React.useState(false);
       const [announce, setAnnounce] = React.useState('');
+      const [confirmNew, setConfirmNew] = React.useState(false);
+      const [contextStatus, setContextStatus] = React.useState('');
       const [panelOpen, setPanelOpen] = React.useState(false);
       const [panelStatus, setPanelStatus] = React.useState('idle');
       const [panelData, setPanelData] = React.useState(null);
@@ -1688,9 +1702,33 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: 'sa-button', onClick: refresh }, t('action.retry'))));
       }
 
+      const runCompact = async () => {
+        setContextStatus('Compacting…');
+        try {
+          const result = await compact();
+          if (result && result.ok === false) throw new Error(result.error?.message ?? 'compact failed');
+          setContextStatus(result?.value?.message ?? 'Context compacted.');
+          refresh();
+        } catch (error) { setContextStatus(`Compact failed: ${error?.message ?? error}`); }
+      };
+      const runNewConversation = async () => {
+        setConfirmNew(false);
+        setContextStatus('Starting a new conversation…');
+        try {
+          const result = await newConversation();
+          if (result && result.ok === false) throw new Error(result.error?.message ?? 'new conversation failed');
+          setPending([]);
+          setDraft('');
+          setContextStatus(result?.value?.message ?? 'New conversation started.');
+          refresh();
+        } catch (error) { setContextStatus(`New conversation failed: ${error?.message ?? error}`); }
+      };
       const canSend = (draft.trim() !== '' || files.length > 0) && !sending;
       const send = async () => {
         if (!canSend) return;
+        const command = draft.trim();
+        if (command === '/compact') { setDraft(''); void runCompact(); return; }
+        if (command === '/new') { setConfirmNew(true); return; }
         setSending(true);
         setSendError(null);
         const text = draft.trim();
@@ -1756,6 +1794,8 @@ window.__ModuleLoader__.load({
             h('span', { className: 'sa-state' },
               h(StateDot, { state: running ? 'ongoing' : 'idle', size: running ? 13 : 10 }),
               stateText),
+            h('button', { type: 'button', className: 'sa-control', onClick: () => void runCompact(), title: 'Compact context' }, 'Compact'),
+            h('button', { type: 'button', className: 'sa-control', onClick: () => setConfirmNew(true), title: 'New conversation' }, 'New'),
             h('button', {
               type: 'button', ref: settingsButtonRef, className: 'sa-iconButton',
               'aria-label': t('settings.open'), 'aria-expanded': panelOpen, 'aria-controls': 'sa-settings',
@@ -1784,6 +1824,13 @@ window.__ModuleLoader__.load({
                 hasNew ? h('span', { className: 'sa-jumpDot', 'aria-hidden': true }) : null,
                 h('span', null, t('action.latest')),
                 h('span', { 'aria-hidden': true }, '\u2193')) : null),
+            confirmNew ? h('div', { className: 'sa-backdrop', role: 'presentation' },
+              h('div', { className: 'sa-confirm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Start a new conversation' },
+                h('p', null, 'Start a new conversation? The current conversation will be archived; model, settings, Telegram binding, delegations, results and Pulse state are preserved.'),
+                h('div', { className: 'sa-confirmActions' },
+                  h('button', { type: 'button', className: 'sa-control', onClick: () => void runNewConversation() }, 'Start new conversation'),
+                  h('button', { type: 'button', className: 'sa-control', onClick: () => setConfirmNew(false) }, 'Cancel')))) : null,
+            contextStatus === '' ? null : h('p', { className: 'sa-muted', role: 'status' }, contextStatus),
             h(Composer, {
               t, draft, setDraft, files, attach, pasteClipboard, dropFiles, removeFile, send, stop: stopAgent, running, sending, sendError,
               selection, catalogData, catalogError, menuOpen, menuMode, openMenu, closeMenu, chooseModel, chooseEffort,
@@ -1926,6 +1973,8 @@ window.__ModuleLoader__.load({
           telegramAdopt: (request) => remote.telegramAdopt(request),
           image: (request) => remote.image(request),
           stop: () => remote.stop(),
+          compact: () => remote.compact(),
+          newConversation: () => remote.newConversation(),
           ctx,
         }),
       }, AgentChat)), 'sidebar-agent: page');
@@ -1955,7 +2004,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'remote'],
+      inject: ['slots', 'locale', 'remote', 'uiWorkspace'],
       apply,
       __internals: {
         AgentChat, Composer, MessageRow, ToolRow, ActivityGroup, DelegationReport, ModelMenu,

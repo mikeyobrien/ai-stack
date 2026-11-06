@@ -8,7 +8,7 @@ const formatDeploymentCallback = (input) => stripMachine(formatDeploymentCallbac
 const fields = {
 	what: 'rich /status',
 	state: 'LIVE',
-	changed: 'packages/dsh-sidebar-agent, packages/dsh-telegram-session-bridge',
+	changed: 'packages/dsh-mov-agent, packages/dsh-telegram-session-bridge',
 	verified: 'sidebar 116 passed; bridge 94 passed; live readback 200,631 / 1,048,576 (19%)',
 	stateLine: 'agent-1f1b4db7… / sparks/GLM-5.3-Flash-EXL3 / #5822509701 / one poller',
 	live: 'Context 200,631 / 1,048,576 (19%); 0 delegations; idle',
@@ -18,7 +18,7 @@ const fields = {
 test('LIVE callback snapshot is the deterministic bounded template', () => {
 	assert.equal(formatDeploymentCallback(fields), [
 		'rich /status: LIVE',
-		'Changed: packages/dsh-sidebar-agent, packages/dsh-telegram-session-bridge',
+		'Changed: packages/dsh-mov-agent, packages/dsh-telegram-session-bridge',
 		'Verified: sidebar 116 passed; bridge 94 passed; live readback 200,631 / 1,048,576 (19%)',
 		'State: agent-1f1b4db7… / sparks/GLM-5.3-Flash-EXL3 / #5822509701 / one poller',
 		'Live: Context 200,631 / 1,048,576 (19%); 0 delegations; idle',
@@ -28,10 +28,10 @@ test('LIVE callback snapshot is the deterministic bounded template', () => {
 })
 
 test('HOLDING and BLOCKED use Holding and keep at most eight lines', () => {
-	const holding = formatDeploymentCallback({ what: 'callback formatter', state: 'holding', changed: 'packages/dsh-sidebar-agent', holding: 'awaiting reviewer release' })
+	const holding = formatDeploymentCallback({ what: 'callback formatter', state: 'holding', changed: 'packages/dsh-mov-agent', holding: 'awaiting reviewer release' })
 	assert.equal(holding, [
 		'callback formatter: HOLDING',
-		'Changed: packages/dsh-sidebar-agent',
+		'Changed: packages/dsh-mov-agent',
 		'Holding: awaiting reviewer release',
 		CALLBACK_MARKER,
 	].join('\n'))

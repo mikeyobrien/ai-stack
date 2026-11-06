@@ -1,10 +1,10 @@
 {
   "meta": {
-    "title": "Agent",
-    "description": "An always-on agent in the left sidebar. Its delegations are sessions in workspaces."
+    "title": "mAgent",
+    "description": "mAgent — an always-on agent in the left sidebar. Its delegations are sessions in workspaces."
   },
-  "panel": "Agent",
-  "title": "Agent",
+  "panel": "mAgent",
+  "title": "mAgent",
   "loading": "Starting Agent…",
   "offline": "Offline",
   "error.start": "The Agent could not start.",

@@ -28,7 +28,12 @@
     "judge.js",
     "decision-log.js",
     "pulse-feed.js",
-    "machine-meta.js"
+    "machine-meta.js",
+    "voice.js",
+    "telegram-miniapp.js",
+    "telegram-miniapp/index.html",
+    "telegram-miniapp/app.js",
+    "telegram-miniapp/style.css"
   ],
   "dsh": {
     "bundle": {

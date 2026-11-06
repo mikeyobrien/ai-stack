@@ -283,8 +283,9 @@ function fakeBridge({ agentSession = AGENT_SESSION, allowedChatIds = [42], bindi
 
 function startedGlue(bridge, overrides = {}) {
 	const calls = { create: [], install: [], start: 0 }
+	const runtime = agentRuntime()
 	const glue = createTelegramHost({
-		runtime: agentRuntime(),
+		runtime,
 		config: { enabled: true, tokenRef: 'A_TOKEN', allowedChatIds: [42], stateFile: '/tmp/never-used.json' },
 		env: { A_TOKEN: '123:supersecret' },
 		importBridge: async () => ({
@@ -301,7 +302,7 @@ function startedGlue(bridge, overrides = {}) {
 		logger: silent,
 		...overrides,
 	})
-	return { glue, calls }
+	return { glue, calls, runtime }
 }
 
 test('enabled start creates one bridge with the owner controller and installs the existing subscriptions', async () => {
@@ -377,17 +378,17 @@ test('a create failure with credential text is sanitized', async () => {
 	assert.ok(glue.status().reason.includes('[redacted]'))
 })
 
-test('an Agent-bound /new is refused with an explicit reply and never reaches the bridge', async () => {
+test('an Agent-bound /new asks for confirmation and never reaches the bridge', async () => {
 	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
 	const { glue } = startedGlue(bridge)
 	await glue.start()
 	const result = await glue.handleUpdate({
 		message: { message_id: 7, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/new' },
 	})
-	assert.equal(result.reason, 'agent-new-unsupported')
+	assert.equal(result.reason, 'context-new-confirm')
 	assert.equal(bridge.forwarded.length, 0)
 	assert.equal(bridge.sent.length, 1)
-	assert.match(bridge.sent[0].text, /new|Agent/)
+	assert.match(bridge.sent[0].text, /\/new confirm/)
 	assert.ok(!/forked|reset/i.test(bridge.sent[0].text))
 })
 
@@ -487,7 +488,7 @@ async function realGlue({ root, fake, runtime, forward, allowedChatIds = [42] })
 	})
 }
 
-test('the real bridge factory sends one visible /new refusal and never creates an ordinary session', async () => {
+test('the real bridge factory sends one /new confirmation and never creates an ordinary session', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'sidebar-agent-new-'))
 	const fake = await new FakeBotApi({ token: '777:fixture-token' }).start()
 	const runtime = agentRuntime({ status: 'idle' })
@@ -507,12 +508,12 @@ test('the real bridge factory sends one visible /new refusal and never creates a
 			update_id: 5,
 			message: { message_id: 7, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/new' },
 		})
-		assert.equal(result.reason, 'agent-new-unsupported')
+		assert.equal(result.reason, 'context-new-confirm')
 		assert.equal(forward.calls.create.length, 0, '/new must not reach ordinary create')
 		assert.equal(forward.calls.prompt.length, 0)
 		assert.equal(runtime.calls.followup.length + runtime.calls.steer.length, 0, '/new must not prompt the Agent')
 		assert.equal(fake.messages.length, 1, 'the refusal is one real Bot API send')
-		assert.match(fake.messages[0].text, /Agent/)
+		assert.match(fake.messages[0].text, /\/new confirm/)
 		const state = JSON.parse(await readFile(join(root, 'telegram-session-bridge', 'state.json'), 'utf8'))
 		assert.equal(state.dms[key].sessionId, runtime.sessionId, 'the Agent binding survives /new')
 	} finally {
@@ -684,4 +685,116 @@ test('the glue intercepts Agent /steer and /queue before the bridge command pars
 		await runtime.gate.close()
 		await rm(root, { recursive: true, force: true })
 	}
+})
+
+test('no allowed non-text update can vanish silently', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const { glue } = startedGlue(bridge)
+	await glue.start()
+	const cases = [
+		['voice', { voice: { file_id: 'v1', file_size: 10, mime_type: 'audio/ogg' } }],
+		['audio', { audio: { file_id: 'a1', file_size: 10, mime_type: 'audio/mpeg' } }],
+		['document', { document: { file_id: 'd1', file_size: 10, mime_type: 'application/pdf' } }],
+		['photo', { photo: [{ file_id: 'p1', file_size: 10 }] }],
+		['video', { video: { file_id: 'vid1', file_size: 10 } }],
+		['sticker', { sticker: { file_id: 's1' } }],
+		['location', { location: { latitude: 1, longitude: 2 } }],
+	]
+	for (const [type, payload] of cases) {
+		const before = bridge.sent.length
+		const result = await glue.handleUpdate({
+			message: {
+				message_id: 500 + before,
+				chat: { id: 42, type: 'private' },
+				from: { id: 42 },
+				...payload,
+			},
+		})
+		assert.equal(result.handled, true, `${type} must be handled`)
+		assert.ok(bridge.sent.length > before, `${type} must get an observable reply`)
+	}
+	assert.equal(bridge.forwarded.length, 0, 'non-text updates never fall through to the bridge')
+})
+
+test('ordinary text still reaches the original bridge handler', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const { glue } = startedGlue(bridge)
+	await glue.start()
+	const result = await glue.handleUpdate({
+		message: { message_id: 600, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: 'hello' },
+	})
+	assert.deepEqual(result, { handled: true, reason: 'original' })
+	assert.equal(bridge.forwarded.length, 1)
+})
+
+test('edited and business message shapes receive the same media catch-all', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const { glue } = startedGlue(bridge)
+	await glue.start()
+	for (const key of ['edited_message', 'business_message', 'edited_business_message']) {
+		const before = bridge.sent.length
+		const result = await glue.handleUpdate({
+			[key]: { message_id: 700 + before, chat: { id: 42, type: 'private' }, from: { id: 42 }, photo: [{ file_id: 'p' }] },
+		})
+		assert.equal(result.handled, true, `${key} must be handled`)
+		assert.ok(bridge.sent.length > before, `${key} must get a reply`)
+	}
+	assert.equal(bridge.forwarded.length, 0)
+})
+
+test('traced replay: message 871, agent chat 5822509701, stt enabled reaches full voice branch', async () => {
+	const bridge = fakeBridge({ allowedChatIds: [5822509701], binding: { chatId: 5822509701, threadId: 0, sessionId: AGENT_SESSION } })
+	bridge.api.getFile = async () => ({ file_path: 'voice/871.ogg', file_size: 3 })
+	bridge.api.downloadFile = async () => ({ bytes: new Uint8Array([1, 2, 3]) })
+	const originalFetch = globalThis.fetch
+	globalThis.fetch = async () => new Response(JSON.stringify({ text: 'traced voice transcript' }), { status: 200, headers: { 'content-type': 'application/json' } })
+	try {
+		const { glue, runtime } = startedGlue(bridge, {
+			config: { enabled: true, tokenRef: 'A_TOKEN', allowedChatIds: [5822509701], stateFile: '/tmp/never-used.json' },
+			stt: { enabled: true, url: 'http://stt.test/v1/audio/transcriptions', model: 'm', timeoutMs: 500 },
+		})
+		await glue.start()
+		const update = {
+			message: {
+				message_id: 871,
+				chat: { id: 5822509701, type: 'private' },
+				from: { id: 5822509701 },
+				voice: { file_id: 'voice-871', file_size: 3, mime_type: 'audio/ogg' },
+			},
+		}
+		const result = await glue.handleUpdate(update)
+		await glue.handleUpdate(update)
+		assert.equal(result.prompted, true)
+		assert.equal(runtime.calls.followup.length, 1, 'redelivery is idempotent')
+		const content = runtime.calls.followup[0].content.map((part) => part.text).join('')
+		assert.equal(content, '🎤 traced voice transcript')
+		assert.equal(content.split('🎤').length - 1, 1, 'exactly one marker')
+		assert.equal(bridge.sent.length, 0, 'successful transcript sends no error reply')
+		assert.equal(bridge.forwarded.length, 0, 'voice does not fall through')
+		assert.equal(glue.state, 'ready')
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+})
+
+test('Agent-bound /compact and /new are controls, never model messages', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const { glue, runtime } = startedGlue(bridge)
+	let compacted = 0
+	let created = 0
+	runtime.contextControls = {
+		async compact() { compacted += 1; return { message: 'Context compacted.' } },
+		async newConversation() { created += 1; return { message: 'New conversation started.' } },
+	}
+	await glue.start()
+	const update = (text) => ({ message: { message_id: 900 + text.length, chat: { id: 42, type: 'private' }, from: { id: 42 }, text } })
+	assert.equal((await glue.handleUpdate(update('/compact'))).reason, 'context-compact')
+	assert.equal(compacted, 1)
+	assert.equal(bridge.forwarded.length, 0, '/compact never reaches the model')
+	await glue.handleUpdate(update('/new'))
+	assert.equal(created, 0, '/new requires confirmation')
+	assert.match(bridge.sent.at(-1).text, /Reply \/new confirm/)
+	await glue.handleUpdate(update('/new confirm'))
+	assert.equal(created, 1)
+	assert.equal(bridge.forwarded.length, 0, '/new confirm never reaches the model')
 })

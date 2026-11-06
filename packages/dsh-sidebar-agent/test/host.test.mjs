@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { __internals } from '../index.js'
+import { validateDelegationRoute, __internals } from '../index.js'
 
 const { settingsOf, workspacePathOf, outcomeOf, reportOf, textOf, steerDelegation, alreadyDelivered, deliverPendingReports, chatStatus } = __internals
 
@@ -249,4 +249,49 @@ test('a cold delegation that never ran a request resumes on the agent route, els
 	const second = coldDelegationHost([{ type: 'session' }])
 	await steerDelegation(second.ctx, { agent: { options: {} } }, { sessionId: 'session-cold' }, 'go', new AbortController().signal)
 	assert.deepEqual(second.resumed, [{ provider: 'reef', model: 'qwen3.8-27b' }])
+})
+
+
+test('delegate validation rejects a reversed provider/model pair and names the valid orientation', async () => {
+	const ctx = { llm: { resolveModelInfo: async (provider, model) => {
+		if (provider === 'deepseek-official' && model === 'deepseek-flash') return { provider, model }
+		throw new Error(`unknown ${provider}/${model}`)
+	} } }
+	await assert.rejects(
+		validateDelegationRoute(ctx, 'deepseek-flash', 'deepseek-official'),
+		/provider\/model are reversed; use provider "deepseek-official" and model "deepseek-flash"/,
+	)
+	await assert.rejects(
+		validateDelegationRoute(ctx, 'nope', 'missing'),
+		/unknown model provider "nope" \/ model "missing"/,
+	)
+	await assert.rejects(
+		validateDelegationRoute(ctx, 'deepseek-official', 'deepseek-official'),
+		/model "deepseek-official" is the provider id/,
+	)
+	await assert.doesNotReject(validateDelegationRoute(ctx, 'deepseek-official', 'deepseek-flash'))
+})
+
+
+test('delegate validation rejects a provider id passed as the wire model even when resolveModelInfo is permissive', async () => {
+	const ctx = {
+		llm: {
+			// The DeepSeek adapter deliberately resolves unknown ids; this is the
+			// permissive behavior that let `model: deepseek-official` reach the wire.
+			resolveModelInfo: async (provider, model) => ({ provider, model }),
+			listModels: async (provider) => provider === 'deepseek-official'
+				? [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }]
+				: [{ id: 'GLM-5.3-Flash-EXL3' }],
+		},
+	}
+	await assert.rejects(
+		validateDelegationRoute(ctx, 'deepseek-official', 'deepseek-official'),
+		/model "deepseek-official" is the provider id/,
+	)
+	await assert.rejects(
+		validateDelegationRoute(ctx, 'deepseek-official', 'deepseek-flash-typo'),
+		/not offered by provider "deepseek-official"; valid models: deepseek-flash, deepseek-v4-pro/,
+	)
+	await assert.doesNotReject(validateDelegationRoute(ctx, 'deepseek-official', 'deepseek-flash'))
+	await assert.doesNotReject(validateDelegationRoute(ctx, 'sparks', 'GLM-5.3-Flash-EXL3'))
 })

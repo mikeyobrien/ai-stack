@@ -80,7 +80,8 @@ export class Delivery {
     if (userText) {
       this.watchdog?.arm(sessionId);
       if (this.#consumeOwnPrompt(sessionId, userText)) return true;
-      await this.send(binding, `${USER_PREFIX}${userText}`);
+      const prefix = userText.startsWith('🎤 ') ? '' : USER_PREFIX;
+      await this.send(binding, `${prefix}${userText}`);
       return true;
     }
 

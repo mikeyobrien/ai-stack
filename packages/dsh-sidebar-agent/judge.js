@@ -4,7 +4,7 @@
  * The endpoint is intentionally loopback-only: ingress message text must never
  * leave the machine. The judge is OpenAI-compatible chat completions and ships
  * disabled until a supported endpoint exists.
- * @module @local/dsh-sidebar-agent/judge
+ * @module @local/dsh-mov-agent/judge
  */
 
 const CHOICES = new Set(['steer', 'queue', 'answer'])

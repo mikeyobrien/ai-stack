@@ -5,7 +5,7 @@
  * `<!--meta:{...json...}-->`; the Client parses it for structured cards and
  * falls back to the plain text when it is absent or malformed.
  *
- * @module @local/dsh-sidebar-agent/machine-meta
+ * @module @local/dsh-mov-agent/machine-meta
  */
 
 /** Prefix/suffix of the final marker line. */

@@ -7,7 +7,7 @@ import { CALLBACK_MARKER, formatDeploymentCallback } from '../deployment-callbac
 const fields = {
 	what: 'callback formatter',
 	state: 'LIVE',
-	changed: 'packages/dsh-sidebar-agent',
+	changed: 'packages/dsh-mov-agent',
 	verified: 'sidebar 116 passed; bridge 94 passed',
 	stateLine: 'agent-status-1 / p/m / #5822509701 / one poller',
 	live: 'formatter live; no Telegram send',

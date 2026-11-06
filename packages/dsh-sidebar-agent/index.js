@@ -12,7 +12,7 @@
  * The Client page reads the `agent` Remote namespace; the agent's own tools are
  * registered on its scoped context, so no other session sees them.
  *
- * @module @local/dsh-sidebar-agent
+ * @module @local/dsh-mov-agent
  */
 
 import { randomUUID } from 'node:crypto'
@@ -26,6 +26,8 @@ import z from '@deepseek-ai/schemastery'
 import { DEFAULT_TELEGRAM_TOKEN_REF, createTelegramHost } from './telegram-host.js'
 import { formatDeploymentCallback } from './deployment-callback.js'
 import { createPulseFeed } from './pulse-feed.js'
+import { handleVoiceUpdate } from './voice.js'
+import { createMiniApp } from './telegram-miniapp.js'
 import { createIngressGate } from './ingress-gate.js'
 
 /** Cordis plugin name. */
@@ -85,6 +87,16 @@ export const Config = z.object({
 	sponsors: z.array(z.string()).default([]),
 	sponsorMinQuietSeconds: z.number().default(60),
 	sponsorMaxDigestChars: z.number().default(1200),
+	miniApp: z.object({
+		enabled: z.boolean().default(false),
+		basePath: z.string().default('/telegram-miniapp'),
+	}).default({}),
+	stt: z.object({
+		enabled: z.boolean().default(false),
+		url: z.string().default('http://100.86.248.44:8891/v1/audio/transcriptions'),
+		model: z.string().default('nvidia/parakeet-tdt-0.6b-v3'),
+		timeoutMs: z.number().default(15000),
+	}).default({}),
 	gate: z.object({
 		mode: z.string().default('rules'),
 		judge: z.object({
@@ -145,6 +157,36 @@ function telegramOf(value) {
 		tokenRef: typeof object.tokenRef === 'string' && object.tokenRef.trim() !== '' ? object.tokenRef.trim() : DEFAULT_TELEGRAM_TOKEN_REF,
 		allowedChatIds: allowed,
 		poll: object.poll !== false,
+	}
+}
+
+/**
+ * Resolve the read-only Mini App config.
+ * @param {unknown} value - resolved miniApp config.
+ * @returns {{enabled: boolean, publicUrl: string, basePath: string}} settings.
+ */
+function miniAppOf(value) {
+	const config = configValue(value)
+	const source = config !== null && typeof config === 'object' && !Array.isArray(config) ? config : {}
+	return {
+		enabled: source.enabled === true,
+		basePath: typeof source.basePath === 'string' && source.basePath.startsWith('/') ? source.basePath : '/telegram-miniapp',
+	}
+}
+
+/**
+ * Resolve the local STT block.
+ * @param {unknown} value - resolved stt config.
+ * @returns {{enabled: boolean, url: string, model: string, timeoutMs: number}} stt settings.
+ */
+function sttOf(value) {
+	const config = configValue(value)
+	const source = config !== null && typeof config === 'object' && !Array.isArray(config) ? config : {}
+	return {
+		enabled: source.enabled === true,
+		url: typeof source.url === 'string' && source.url !== '' ? source.url : 'http://100.86.248.44:8891/v1/audio/transcriptions',
+		model: typeof source.model === 'string' && source.model !== '' ? source.model : 'nvidia/parakeet-tdt-0.6b-v3',
+		timeoutMs: Number.isFinite(source.timeoutMs) && source.timeoutMs > 0 ? source.timeoutMs : 15000,
 	}
 }
 
@@ -219,6 +261,8 @@ function settingsOf(config) {
 		stallTimeoutMs: Number.isSafeInteger(stallMs) && stallMs > 0 ? stallMs : DEFAULT_DELEGATION_STALL_MS,
 		stallAutoCancel: stallAutoCancel === true,
 		pulse: pulseOf(config.pulse, sponsorValues, sponsorQuiet, sponsorMax),
+		stt: sttOf(config.stt),
+		miniApp: miniAppOf(config.miniApp),
 		gate: gateOf(config.gate),
 		telegram: telegramOf(config.telegram),
 	}
@@ -483,6 +527,56 @@ function handleAgentTurnEnd(runtime, session, event) {
 }
 
 /**
+ * Validate a caller-supplied provider/model pair before creating a child.
+ *
+ * A reversed pair is the failure that produced a child's first-turn
+ * `NO_ADAPTER`; reject it at the tool boundary and name the correct orientation.
+ * @param {any} ctx - Host context with the LLM registry.
+ * @param {string} provider - caller provider.
+ * @param {string} model - caller model.
+ * @returns {Promise<void>} resolves when the route is valid.
+ */
+export async function validateDelegationRoute(ctx, provider, model) {
+	if (provider === undefined || model === undefined) return
+	const fail = (error) => {
+		const detail = error?.message === undefined ? String(error) : error.message
+		return new Error(`delegate: unknown model provider "${provider}" / model "${model}": ${detail}`)
+	}
+	if (provider === model) {
+		throw new Error(`delegate: model "${model}" is the provider id, not a model offered by provider "${provider}"`)
+	}
+	let resolved = false
+	try {
+		await ctx.llm.resolveModelInfo(provider, model)
+		resolved = true
+	} catch (error) {
+		let reversed = false
+		try {
+			await ctx.llm.resolveModelInfo(model, provider)
+			reversed = true
+		} catch {
+			// Neither orientation resolves.
+		}
+		if (reversed) {
+			throw new Error(`delegate: provider/model are reversed; use provider "${model}" and model "${provider}" (received provider "${provider}", model "${model}")`)
+		}
+		throw fail(error)
+	}
+	if (resolved && typeof ctx.llm.listModels === 'function') {
+		try {
+			const offered = await ctx.llm.listModels(provider)
+			const ids = (offered ?? []).map((entry) => entry?.id).filter((id) => typeof id === 'string')
+			if (ids.length > 0 && !ids.includes(model)) {
+				throw new Error(`delegate: model "${model}" is not offered by provider "${provider}"; valid models: ${ids.join(', ')}`)
+			}
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith('delegate: model ')) throw error
+			// A transient catalog read must not block a resolvable route.
+		}
+	}
+}
+
+/**
  * Start one delegation session in a workspace and give it its brief.
  * @param {import('@deepseek-ai/cordis').Context} ctx - Host context owning the session.
  * @param {any} runtime - shared plugin state.
@@ -493,6 +587,7 @@ function handleAgentTurnEnd(runtime, session, event) {
 async function startDelegation(ctx, runtime, args, signal) {
 	if (runtime.agent === null || runtime.sessionId === null) throw new Error('the agent is not running yet')
 	if ((args.provider === undefined) !== (args.model === undefined)) throw new Error('provider and model are given together, or both omitted')
+	await validateDelegationRoute(ctx, args.provider, args.model)
 	const base = ctx.workingDirectory.get(runtime.agent.session)
 	const workspace = await resolveWorkspace(ctx, args.workspace, base, signal)
 	const agentOptions = args.provider === undefined
@@ -2205,9 +2300,19 @@ export function agentService(runtime) {
 			agent.cancel({ kind: 'user' })
 			return { stopped: true }
 		}
+
+		/** Compact the conversation through the host compaction service. */
+		async compact() {
+			return this.runtime.contextControls.compact()
+		}
+
+		/** Start a confirmed new conversation, archiving the old session. */
+		async newConversation() {
+			return this.runtime.contextControls.newConversation()
+		}
 	}
 
-	const json = { mode: 'strict', typeSymbol: '@local/dsh-sidebar-agent#JSON', create: () => ({ parse: (value) => value }) }
+	const json = { mode: 'strict', typeSymbol: '@local/dsh-mov-agent#JSON', create: () => ({ parse: (value) => value }) }
 	Object.defineProperty(Klass.prototype, REMOTE_METHOD_DESCRIPTOR, {
 		configurable: true,
 		value: Object.freeze({
@@ -2249,6 +2354,8 @@ export function agentService(runtime) {
 					parameters: Object.freeze([Object.freeze({ name: 'request', wire: 'request', source: 'json', codec: json })]),
 				}),
 				Object.freeze({ method: 'stop', invocation: Object.freeze({ kind: 'direct' }) }),
+				Object.freeze({ method: 'compact', invocation: Object.freeze({ kind: 'direct' }) }),
+				Object.freeze({ method: 'newConversation', invocation: Object.freeze({ kind: 'direct' }) }),
 			]),
 		}),
 	})
@@ -2326,6 +2433,107 @@ async function initialSelectionOf(ctx, agent) {
 }
 
 /**
+ * Real owner context controls: native compaction and a new conversation.
+ * @param {any} ctx - scoped host context.
+ * @param {any} runtime - plugin runtime.
+ * @returns {{compact: Function, newConversation: Function}} controls.
+ */
+export function createContextControls({ ctx, runtime }) {
+	let inFlight = null
+	let inFlightKind = null
+	const busy = () => runtime.agent === null || runtime.agent === undefined
+		? 'The Agent is not running.'
+		: runtime.agent.status === 'running'
+			? 'Stop the running turn before changing the conversation.'
+			: (runtime.gate?.pendingCount?.() ?? 0) > 0
+				? 'Clear the queued messages before starting a new conversation.'
+				: null
+	const run = (kind, operation) => {
+		if (inFlight !== null) {
+			if (inFlightKind === kind) return inFlight
+			throw new Error('A context change is already in progress.')
+		}
+		inFlightKind = kind
+		inFlight = Promise.resolve().then(operation).finally(() => {
+			inFlight = null
+			inFlightKind = null
+		})
+		return inFlight
+	}
+	const compact = () => run('compact', async () => {
+		const blocked = busy()
+		if (blocked !== null) throw new Error(blocked)
+		const compaction = ctx.get?.('compaction')
+		if (compaction === null || compaction === undefined || typeof compaction.compactNow !== 'function') {
+			throw new Error('Native compaction is unavailable: ctx.compaction.compactNow is missing.')
+		}
+		try {
+			const result = await compaction.compactNow(runtime.agent, undefined, 'owner-compact')
+			return result === null
+				? { ok: true, compacted: false, message: 'Nothing safe to compact yet.' }
+				: { ok: true, compacted: true, message: `Compacted ${result.shadowedSeqs?.length ?? 0} context items.` }
+		} catch (error) {
+			const code = error?.code ?? 'failed'
+			throw new Error(`Could not compact the conversation (${code}): ${error?.message ?? error}`)
+		}
+	})
+	const newConversation = () => run('new', async () => {
+		const blocked = busy()
+		if (blocked !== null) throw new Error(blocked)
+		const old = runtime.agent
+		const oldId = runtime.sessionId
+		const oldHandle = runtime.agentHandle
+		const selection = runtime.selectionRef?.current ?? old.options ?? {}
+		const sessionId = `agent-${randomUUID()}`
+		let handle
+		let rebound = false
+		let created = false
+		const cleanupNew = async () => {
+			if (!created) return
+			if (typeof handle?.dispose === 'function') await handle.dispose().catch(() => {})
+			try { await ctx.workspaceRegistry.archiveSession(sessionId, { stopActivity: true }) } catch {}
+		}
+		try {
+			handle = await ctx.agents.create({
+				sessionId,
+				agentOptions: Object.keys(selection).length === 0 ? {} : selection,
+				meta: { cwd: runtime.cwd, origin: 'subagent' },
+				setup: runtime.setupConversation,
+			})
+			created = true
+			const reboundResult = await runtime.telegram?.rebindAgentSession?.(oldId, sessionId)
+			rebound = reboundResult?.rebound === true
+			const lateBlocked = busy()
+			if (lateBlocked !== null) throw new Error(`${lateBlocked} The old conversation is unchanged.`)
+			await ctx.workspaceRegistry.archiveSession(oldId, { stopActivity: true })
+		} catch (error) {
+			if (rebound) {
+				try { await runtime.telegram.rebindAgentSession(sessionId, oldId) } catch (rollbackError) {
+					runtime.contextRecovery = { status: 'error', message: `Telegram binding may point at a new session: ${rollbackError?.message ?? rollbackError}`, at: Date.now() }
+				}
+			}
+			await cleanupNew()
+			runtime.contextRecovery = { status: 'error', message: error?.message ?? String(error), at: Date.now() }
+			throw new Error(`Could not start a new conversation: ${error?.message ?? error}. The old conversation was preserved.`)
+		}
+		runtime.agent = handle.agent
+		runtime.agentHandle = handle
+		runtime.sessionId = sessionId
+		try {
+			await ctx.sessionTitle.rename(handle.agent.session, runtime.title)
+			await runtime.store.save(runtime.snapshot())
+			if (typeof oldHandle?.dispose === 'function') await oldHandle.dispose().catch(() => {})
+			runtime.contextRecovery = null
+			return { ok: true, sessionId, archived: oldId, message: 'New conversation started.' }
+		} catch (error) {
+			runtime.contextRecovery = { status: 'error', message: `New conversation is live but finalization failed: ${error?.message ?? error}`, at: Date.now() }
+			throw new Error(`New conversation started, but finalization failed: ${error?.message ?? error}`)
+		}
+	})
+	return { compact, newConversation }
+}
+
+/**
  * Create or resume the always-on agent under one stable identity, and attach it
  * to its own Workspace so the Conversation has a workspace to start in.
  * @param {import('@deepseek-ai/cordis').Context} ctx - the plugin's Host context.
@@ -2344,6 +2552,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 		installModelSelection(agentCtx, runtime.selectionRef)
 		composeAgent(agentCtx, ctx, runtime)
 	}
+	runtime.setupConversation = setup
 	const agentOptions = {
 		provider: settings.provider,
 		model: settings.model,
@@ -2377,6 +2586,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 			if (known.length > 0) {
 				const handle = await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup, signal })
 				agent = handle.agent
+				runtime.agentHandle = handle
 			}
 		}
 	}
@@ -2393,6 +2603,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 		})
 		await ctx.sessionTitle.rename(handle.agent.session, title)
 		agent = handle.agent
+		runtime.agentHandle = handle
 	}
 	runtime.agent = agent
 	runtime.sessionId = sessionId
@@ -2496,6 +2707,25 @@ export function apply(ctx, config = {}) {
 		void applyConfigChanges(runtime.host ?? ctx, runtime)
 	}), 'sidebar-agent: settings changes')
 
+	if (settings.miniApp.enabled) {
+		ctx.inject(['webServer'], (web) => {
+			const token = process.env[settings.telegram.tokenRef]
+			if (typeof token !== 'string' || token === '') {
+				console.warn('sidebar-agent: mini app enabled without a Telegram bot token')
+				return
+			}
+			const handler = createMiniApp({
+				runtime,
+				botToken: token,
+				basePath: settings.miniApp.basePath,
+				staticDir: new URL('./telegram-miniapp/', import.meta.url).pathname,
+				dataDir: settings.dataDir,
+				allowedUserIds: settings.telegram.allowedChatIds ?? [],
+			})
+			web.webServer.register({ kind: 'prefix', path: settings.miniApp.basePath, handler })
+			web.effect(() => () => {}, 'sidebar-agent: mini app route lifecycle')
+		})
+	}
 	ctx.inject(['agents', 'sessionQuery', 'workspaceRegistry', 'sessionTitle', 'workingDirectory', 'fs', 'llm', 'attachments'], (scoped) => {
 		runtime.host = scoped
 		runtime.pendingQuestion = () => pendingQuestionOf(scoped, runtime)
@@ -2506,6 +2736,7 @@ export function apply(ctx, config = {}) {
 			modelControl: runtime.modelControl,
 			statusControl: runtime.statusControl,
 			config: settings.telegram,
+			stt: settings.stt,
 			env: process.env,
 			forward: () => ctx.get('sessionController'),
 			install: (bridge) => {
@@ -2568,6 +2799,7 @@ export function apply(ctx, config = {}) {
 			else if (frame.type === 'end') runtime.streamText = null
 		}), 'sidebar-agent: streaming text')
 
+		runtime.contextControls = createContextControls({ ctx: scoped, runtime })
 		scoped.effect(() => scoped.on('session/event', (session, event) => {
 			handleDelegationSessionEvent(scoped, runtime, session, event)
 			handleAgentTurnEnd(runtime, session, event)

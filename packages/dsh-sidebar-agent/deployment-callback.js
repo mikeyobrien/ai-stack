@@ -5,7 +5,7 @@
  * callback never becomes run-on prose. The owner Remote sends the rendered text
  * into this same Agent through the existing chat channel.
  *
- * @module @local/dsh-sidebar-agent/deployment-callback
+ * @module @local/dsh-mov-agent/deployment-callback
  */
 
 import { withMachineMeta } from './machine-meta.js'

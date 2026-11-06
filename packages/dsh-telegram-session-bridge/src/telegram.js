@@ -101,6 +101,26 @@ export class TelegramBotApi {
     return this.call('getMe', {}, options);
   }
 
+  /** Resolve one Telegram file id to its file_path/size. */
+  getFile(fileId, options) {
+    if (typeof fileId !== 'string' || fileId === '') throw new TypeError('getFile requires a file_id');
+    return this.call('getFile', { file_id: fileId }, options);
+  }
+
+  /** Download one resolved Telegram file without exposing the bot token to callers. */
+  async downloadFile(filePath, { signal } = {}) {
+    if (typeof filePath !== 'string' || filePath === '') throw new TypeError('downloadFile requires a file_path');
+    const response = await this.fetchImpl(`${this.baseUrl}/file/bot${this.token}/${filePath.replace(/^\/+/, '')}`, { signal });
+    if (!response.ok) {
+      throw new BotApiError(`Telegram file download failed (${response.status})`, {
+        method: 'downloadFile',
+        status: response.status,
+      });
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return { bytes, contentType: response.headers.get('content-type') ?? 'application/octet-stream' };
+  }
+
   getUpdates({ offset = 0, timeoutSec = 0, allowedUpdates = ['message', 'callback_query'] } = {}, { signal } = {}) {
     return this.call(
       'getUpdates',

@@ -131,6 +131,10 @@
       ],
       streaming: 'Streaming fixture reply\u2026', running: true,
     }),
+    voice: () => setData({
+      messages: [user('v1', '🎤 fixture voice transcript'), assistant('va1', 'Voice received.')],
+      reports: [], streaming: null, running: false,
+    }),
     machine: () => setData({
       messages: [
         user('m1', `pulse\nsession: session-pulse\ntitle: Pulse fixture\nreason: completed\nduration: 1s\nprompt: inspect the pulse card\nresult: pulse result body\n${metaTail({ kind: 'pulse', session: 'session-pulse', title: 'Pulse fixture', reason: 'completed', durationMs: 1234, prompt: 'inspect the pulse card', result: 'pulse result body' })}`),

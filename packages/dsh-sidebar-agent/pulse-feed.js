@@ -7,7 +7,7 @@
  * the quiet window coalesce into one message. Restart dedupe uses the persisted
  * last turn/end sequence per session.
  *
- * @module @local/dsh-sidebar-agent/pulse-feed
+ * @module @local/dsh-mov-agent/pulse-feed
  */
 
 import { createUserMessage } from '@deepseek-ai/dsh-llm'

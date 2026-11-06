@@ -873,6 +873,36 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		await page.setViewportSize({ width: 1000, height: 720 })
 	})
 
+
+	await t.test('voice transcript shows the microphone marker, not the user arrow', async () => {
+		await reset()
+		await setScenario('voice')
+		await page.locator('.sa-userBubble').first().waitFor({ state: 'visible' })
+		const text = await page.locator('.sa-userBubble').first().innerText()
+		assert.match(text, /🎤 fixture voice transcript/)
+		assert.ok(!text.includes('▸'), 'the voice bubble has no user arrow')
+	})
+
+
+	await t.test('compact/new are controls and /new confirms before any reset', async () => {
+		await reset()
+		await setScenario('idle')
+		assert.equal(await page.getByRole('button', { name: 'Compact', exact: true }).count(), 1)
+		assert.equal(await page.getByRole('button', { name: 'New', exact: true }).count(), 1)
+		await textarea().fill('/compact')
+		await textarea().press('Enter')
+		await page.waitForTimeout(100)
+		assert.equal((await calls()).chat.length, 0, '/compact must not be sent to the model')
+		assert.match(await page.locator('[role="status"]').last().innerText(), /Compact failed:/)
+		await textarea().fill('/new')
+		await textarea().press('Enter')
+		await page.waitForTimeout(100)
+		assert.equal(await page.locator('.sa-confirm').count(), 1)
+		assert.equal((await calls()).chat.length, 0, '/new must not be sent to the model')
+		await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+		assert.equal(await page.locator('.sa-confirm').count(), 0)
+	})
+
 	await t.test('no uncaught browser errors', () => {
 		assert.deepEqual(consoleErrors, [])
 	})

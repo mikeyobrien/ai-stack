@@ -2,7 +2,7 @@
  * Append-only, batched, rotated decision log for the ingress gate.
  *
  * Records are bounded field data only; message text is never accepted here.
- * @module @local/dsh-sidebar-agent/decision-log
+ * @module @local/dsh-mov-agent/decision-log
  */
 
 import { mkdir, open, rename, stat } from 'node:fs/promises'

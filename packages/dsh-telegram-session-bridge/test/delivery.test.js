@@ -109,3 +109,10 @@ test('[M6] a different web turn is still echoed after one own prompt is consumed
 
   assert.deepEqual(bot.messages.map((message) => message.text), ['▸ typed on the web']);
 });
+
+test('[M6] voice transcript uses the microphone marker, not the user arrow', async (t) => {
+  const { bot, store, delivery } = await setup(t);
+  await store.bind({ chatId: 111, threadId: 42, sessionId: 'session-a', managedMode: 'auto' });
+  await delivery.handleSessionEvent({ id: 'session-a' }, userEvent('🎤 hello voice'));
+  assert.deepEqual(bot.messages.map((message) => message.text), ['🎤 hello voice']);
+});

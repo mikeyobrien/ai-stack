@@ -228,3 +228,11 @@ test('stop with keepInbox leaves a queued message deliverable on idle', async (t
 	assert.deepEqual(stops, [[{ kind: 'user' }, { keepInbox: true }]])
 	assert.deepEqual(h.calls.followup.map(textOf), ['queued before cancellation'])
 })
+
+test('the voice provenance marker is included in decision-log msgLen', async (t) => {
+	const h = await harness(t)
+	await h.gate.deliver(h.agent, '🎤 hello voice')
+	await h.gate.flush()
+	const line = JSON.parse((await readFile(join(h.root, 'decision-log.ndjson'), 'utf8')).trim())
+	assert.equal(line.features.msgLen, '🎤 hello voice'.length)
+})

@@ -1,4 +1,4 @@
-# Sidebar Agent
+# mAgent
 
 An always-on agent in the left sidebar. The Agent icon opens one long-lived chat: the same session,
 with the same history, for as long as the Host runs. There is no Agent workspace and no session row
@@ -198,9 +198,9 @@ while the standalone bridge is still running would create two pollers and is not
 `telegram` status reports state, whether it is enabled, the Agent's binding coordinates, and the
 authorized DM candidates only. No token material is returned.
 
-The `agent` Remote exposes the twelve methods listed below: `status`, `delegated`, `catalog`,
+The `agent` Remote exposes the fourteen methods listed below: `status`, `delegated`, `catalog`,
 `chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `agentStatus`,
-`deploymentCallback`, `image`, and `stop`. The page never receives a token. `telegramAdopt` can only name an existing DM record and always binds this live Agent
+`deploymentCallback`, `image`, `stop`, `compact`, and `newConversation`. The page never receives a token. `telegramAdopt` can only name an existing DM record and always binds this live Agent
 session, never a caller-supplied session id.
 
 ## Where it attaches
@@ -212,7 +212,7 @@ session, never a caller-supplied session id.
 | `conversation.session.header.actions` id `delegated-tag` | `conversation` | The `Delegated` pill beside a delegated session's title |
 | `sidebar.session.row.hover` id `delegated-hover` | `ui-workspace` | The pill in a delegated row's hover card |
 | `sidebar.session.row.leading` id `delegated-mark` | `ui-workspace` | The icon in a delegated row's idle leading cell |
-| Remote namespace `agent` | this plugin | `status`, `delegated`, `catalog`, `chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `agentStatus`, `deploymentCallback`, `image`, `stop` |
+| Remote namespace `agent` | this plugin | `status`, `delegated`, `catalog`, `chat`, `setModel`, `settings`, `saveSettings`, `telegramAdopt`, `agentStatus`, `deploymentCallback`, `image`, `stop`, `compact`, `newConversation` |
 
 The page polls `status()` every 1.5 seconds while it is open and refreshes on tab visibility. The chat
 renders the session's current surface — the person's messages, the agent's answers, tool calls with
@@ -308,3 +308,10 @@ node --test test/
 
 `SA_REACT_DIR`, `DSH_WEB_PROFILE`, and `SA_CHROMIUM` override the detected React, Playwright profile,
 and Chromium paths. The fixture test skips when React UMD is absent.
+
+### Telegram Mini App (read-only, opt-in)
+
+`miniApp { enabled, basePath }` is off by default. When enabled on the row and the Telegram bot token
+is available, the existing web server serves `/telegram-miniapp`; the static shell is public, API
+calls require Telegram `initData` in `x-telegram-init-data` and a user in `telegram.allowedChatIds`.
+No bot menu is wired. Read-only views: pulse history, question status, agent status, decision-log tail.

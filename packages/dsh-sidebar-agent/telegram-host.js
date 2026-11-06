@@ -17,11 +17,12 @@
  * 256-entry cache bound is unchanged; after eviction, a very old redelivery can
  * prompt again. That post-eviction residual is intentional and documented here.
  *
- * @module @local/dsh-sidebar-agent/telegram-host
+ * @module @local/dsh-mov-agent/telegram-host
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { handleVoiceUpdate } from './voice.js'
 
 /** Default env var holding the bridge bot token (same identity as the bridge). */
 export const DEFAULT_TELEGRAM_TOKEN_REF = 'DSH_TELEGRAM_SESSION_BRIDGE_BOT_TOKEN'
@@ -232,6 +233,28 @@ async function defaultImportBridge() {
 	}
 }
 
+const MESSAGE_KEYS = ['message', 'edited_message', 'business_message', 'edited_business_message']
+const MEDIA_TYPES = ['voice', 'audio', 'document', 'photo', 'video', 'video_note', 'sticker', 'animation', 'location', 'contact', 'poll', 'dice', 'game', 'story']
+
+/** Normalize every Telegram message-bearing update shape to its message. */
+export function messageOfUpdate(update) {
+	if (update === null || typeof update !== 'object') return null
+	for (const key of MESSAGE_KEYS) {
+		if (update[key] !== null && update[key] !== undefined) return update[key]
+	}
+	return null
+}
+
+/** The Telegram media field carried by one message, or null for text. */
+export function mediaTypeOf(message) {
+	if (message === null || typeof message !== 'object') return null
+	if (typeof message.text === 'string' && message.text.trim() !== '') return null
+	for (const type of MEDIA_TYPES) {
+		if (message[type] !== undefined && message[type] !== null) return type
+	}
+	return null
+}
+
 /**
  * Create the dormant glue object. Nothing is imported, read, or started until
  * `start()` is called; with the default config that never happens in stage 1.
@@ -253,6 +276,7 @@ async function defaultImportBridge() {
 export function createTelegramHost({
 	runtime,
 	config = {},
+	stt = {},
 	env = process.env,
 	forward = () => undefined,
 	modelControl = null,
@@ -272,6 +296,7 @@ export function createTelegramHost({
 	let starting
 	let disposeInstall
 	let generation = 0
+	const pendingNew = new Map()
 
 	const sanitize = (error) => {
 		let message = String(error?.message ?? error ?? 'unknown error')
@@ -290,7 +315,7 @@ export function createTelegramHost({
 	 * store is the source of truth, and a private DM is required for thread 0.
 	 */
 	const targetKindOf = (update) => {
-		const message = update?.message
+		const message = messageOfUpdate(update)
 		if (message === undefined || message === null) return 'session'
 		const chatId = message.chat?.id
 		if (!Number.isSafeInteger(chatId)) return 'session'
@@ -315,10 +340,85 @@ export function createTelegramHost({
 		return /^\/(steer|queue)(?:@[A-Za-z0-9_]+)?(?:\s|$)/i.test(text)
 	}
 
+	const contextCommand = (message) => {
+		const text = typeof message?.text === 'string' ? message.text.trim() : ''
+		if (text === '/compact') return 'compact'
+		if (text === '/new') return 'new'
+		if (text === '/new confirm') return 'new-confirm'
+		return null
+	}
+
 	const handleUpdate = async (update) => {
 		if (bridge === undefined) return { handled: false, reason: 'telegram-inactive' }
 		const kind = targetKindOf(update)
-		const message = update?.message
+		const message = messageOfUpdate(update)
+		const normalized = message === null || update?.message === message ? update : { ...update, message }
+		const mediaType = mediaTypeOf(message)
+		if (message !== undefined && mediaType !== null && allowed(message.chat?.id)) {
+			try {
+				if (kind === 'agent') {
+					const voice = await handleVoiceUpdate({
+						message,
+						sessionId: runtime.sessionId,
+						bridge,
+						ownerController,
+						stt,
+						logger,
+					})
+					if (voice !== null) return voice
+				}
+				await bridge.api.sendMessage({
+					chatId: message.chat.id,
+					threadId: message.message_thread_id ?? 0,
+					text: `I can't process ${mediaType} messages yet. Send text or a voice note.`,
+				})
+				logger?.warn?.(`[sidebar-agent] update-unsupported path=update-unsupported type=${mediaType}`)
+				return { handled: true, reason: 'update-unsupported', type: mediaType }
+			} catch (error) {
+				try {
+					await bridge.api.sendMessage({
+						chatId: message.chat.id,
+						threadId: message.message_thread_id ?? 0,
+						text: `I could not process that ${mediaType} message (${sanitize(error)}). Please try again or send text.`,
+					})
+				} catch (sendError) {
+					logger?.warn?.(`[sidebar-agent] update-error path=update-error reply failed: ${sanitize(sendError)}`)
+				}
+				logger?.warn?.(`[sidebar-agent] update-error path=update-error type=${mediaType}: ${sanitize(error)}`)
+				return { handled: true, reason: 'update-error', type: mediaType }
+			}
+		}
+		if (kind === 'agent' && message !== undefined && allowed(message.chat?.id) && contextCommand(message) !== null) {
+			const chatId = message.chat.id
+			const threadId = message.message_thread_id ?? 0
+			const command = contextCommand(message)
+			const reply = (text) => bridge.api.sendMessage({ chatId, threadId, text })
+			if (command === 'compact') {
+				try {
+					const result = await runtime.contextControls.compact()
+					await reply(result?.message ?? 'Context compacted.')
+				} catch (error) { await reply(`Could not compact: ${sanitize(error)}`) }
+				return { handled: true, reason: 'context-compact' }
+			}
+			const key = `${chatId}:${threadId}`
+			if (command === 'new') {
+				pendingNew.set(key, Date.now())
+				await reply('Start a new conversation? Reply /new confirm within 60s. The current conversation will be archived.')
+				return { handled: true, reason: 'context-new-confirm' }
+			}
+			const at = pendingNew.get(key)
+			if (at === undefined || Date.now() - at > 60_000) {
+				pendingNew.delete(key)
+				await reply('No new-conversation request is pending. Send /new first.')
+				return { handled: true, reason: 'context-new-stale' }
+			}
+			pendingNew.delete(key)
+			try {
+				const result = await runtime.contextControls.newConversation()
+				await reply(result?.message ?? 'New conversation started.')
+			} catch (error) { await reply(`Could not start a new conversation: ${sanitize(error)}`) }
+			return { handled: true, reason: 'context-new' }
+		}
 		if (kind === 'agent' && message !== undefined && runtime.gate?.mode !== 'off' && isGateCommand(message) && allowed(message.chat?.id)) {
 			const chatId = message.chat.id
 			const threadId = message.message_thread_id ?? 0
@@ -378,9 +478,21 @@ export function createTelegramHost({
 			}
 			return { handled: true, reason: 'agent-new-unsupported' }
 		}
-		return ownerController.withAgentTarget(kind, () => originalHandleUpdate.call(bridge, update))
+		return ownerController.withAgentTarget(kind, () => originalHandleUpdate.call(bridge, normalized))
 	}
 	let originalHandleUpdate = async () => ({ handled: false, reason: 'bridge-unavailable' })
+
+	/** Move an existing Agent binding to a rotated conversation. */
+	const rebindAgentSession = async (oldSessionId, newSessionId) => {
+		if (bridge === undefined) throw new Error('Telegram is not active')
+		const record = bridge.store?.getBindingForSession?.(oldSessionId)
+		if (record === null || record === undefined) return { rebound: false }
+		if (typeof record.key === 'string' && record.key.startsWith('dm:')) {
+			await bridge.store.setDm({ key: record.key, sessionId: newSessionId, mode: 'replaced' })
+			return { rebound: true, chatId: record.chatId, threadId: record.threadId ?? 0 }
+		}
+		return { rebound: false, reason: 'non-dm binding' }
+	}
 
 	const dmCandidates = () => {
 		const candidates = []
@@ -561,6 +673,7 @@ export function createTelegramHost({
 		stop,
 		handleUpdate,
 		adoptDm,
+		rebindAgentSession,
 		handleSessionEvent: (session, event) => bridge?.handleSessionEvent?.(session, event),
 		handleApproval: (request, next) => (bridge?.handleApproval === undefined ? next?.() : bridge.handleApproval(request, next)),
 		handleQuestion: (request, next) => (bridge?.handleQuestion === undefined ? next?.() : bridge.handleQuestion(request, next)),

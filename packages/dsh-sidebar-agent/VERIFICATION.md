@@ -37,9 +37,9 @@ For future Host-only source updates, use authorized targeted Host plugin reconci
 Independent final run from the ai-stack root:
 
 ```sh
-DSH_SIDEBAR_CONTEXT_PROOF=/home/mobrienv/dsh-workspace/ai-stack/.playwright-mcp/sidebar-workspace-turn-input.json node --test packages/dsh-sidebar-agent/test/
-node --check packages/dsh-sidebar-agent/index.js
-node --check packages/dsh-sidebar-agent/test/workspace-context.test.mjs
+DSH_SIDEBAR_CONTEXT_PROOF=/home/mobrienv/dsh-workspace/ai-stack/.playwright-mcp/sidebar-workspace-turn-input.json node --test packages/dsh-mov-agent/test/
+node --check packages/dsh-mov-agent/index.js
+node --check packages/dsh-mov-agent/test/workspace-context.test.mjs
 git diff --check
 ```
 
@@ -104,7 +104,7 @@ The parent's rerunnable read-only verifier (`verify-agent-live.js`) was run afte
 
 ### Isolated browser fixture — no host, no live Agent
 
-`node --test packages/dsh-sidebar-agent/test/fixture.test.mjs` rendered the real client module against a fake transport with React 18 UMD and a stub `MarkdownText` (the platform renderer is verified live instead). The fixture suite passed (fifteen focused subtests; sixteen test results including the outer test):
+`node --test packages/dsh-mov-agent/test/fixture.test.mjs` rendered the real client module against a fake transport with React 18 UMD and a stub `MarkdownText` (the platform renderer is verified live instead). The fixture suite passed (fifteen focused subtests; sixteen test results including the outer test):
 
 - empty/loading/error states; Enter sends and clears on success; Shift+Enter inserts a newline; composition start and keyCode 229 do not submit; Enter after composition end does;
 - failed send keeps the draft, attachment, and error; remove works; Stop calls stop and keeps the draft; the header then reads `Stopped`;
@@ -120,14 +120,14 @@ The parent's rerunnable read-only verifier (`verify-agent-live.js`) was run afte
 ## Tests and checks
 
 ```sh
-node --test packages/dsh-sidebar-agent/test/
+node --test packages/dsh-mov-agent/test/
 # 42 tests passed, 0 failed (includes 16 fixture test results / 15 focused subtests)
-node --check packages/dsh-sidebar-agent/client.js
-node --check packages/dsh-sidebar-agent/index.js
-node --check packages/dsh-sidebar-agent/test/client.test.mjs
-node --check packages/dsh-sidebar-agent/test/fixture.test.mjs
-node --check packages/dsh-sidebar-agent/test/fixture/fixture.js
-node --check packages/dsh-sidebar-agent/test/fixture/server.mjs
+node --check packages/dsh-mov-agent/client.js
+node --check packages/dsh-mov-agent/index.js
+node --check packages/dsh-mov-agent/test/client.test.mjs
+node --check packages/dsh-mov-agent/test/fixture.test.mjs
+node --check packages/dsh-mov-agent/test/fixture/fixture.js
+node --check packages/dsh-mov-agent/test/fixture/server.mjs
 git diff --check
 ```
 
@@ -135,7 +135,7 @@ The fixture requires React UMD outside the plugin (setup in README) and skips wh
 
 ## Deployment and reload
 
-Changed artifact: `packages/dsh-sidebar-agent/client.js` (the hand-written client bundle served through the profile symlink) plus tests/docs. No host change was needed. No `dev:web` watcher was observed. The client-plugin HMR receiver picked up each edit: the panel remounted and the new placeholder, CSS, and control row appeared in the existing URL with no backend restart and no replacement server. The live checks above were taken after those reloads. The page was also fully reloaded and re-opened to verify the final artifact. No model selection, attachment, session history, or workspace registry was changed for testing; no test message was sent to the live Agent.
+Changed artifact: `packages/dsh-mov-agent/client.js` (the hand-written client bundle served through the profile symlink) plus tests/docs. No host change was needed. No `dev:web` watcher was observed. The client-plugin HMR receiver picked up each edit: the panel remounted and the new placeholder, CSS, and control row appeared in the existing URL with no backend restart and no replacement server. The live checks above were taken after those reloads. The page was also fully reloaded and re-opened to verify the final artifact. No model selection, attachment, session history, or workspace registry was changed for testing; no test message was sent to the live Agent.
 
 ## Remaining limits
 
@@ -154,7 +154,7 @@ Changed artifact: `packages/dsh-sidebar-agent/client.js` (the hand-written clien
 
 ## Observed evidence
 
-- `node --test packages/dsh-sidebar-agent/test/`: **42 passed, 0 failed**, including the real Cordis cold-resume/persona test, the Host delivery/timeline tests, and the browser timeline ordering fixture.
+- `node --test packages/dsh-mov-agent/test/`: **42 passed, 0 failed**, including the real Cordis cold-resume/persona test, the Host delivery/timeline tests, and the browser timeline ordering fixture.
 - Cold resume: a disposed child whose last request was `fixture/no-inference` and whose durable pending selection was `fixture/deepseek-flash/high` resumed with agent options `deepseek-flash/high`; the resumed request header recorded `deepseek-flash`; the persona text interpolated `Delegation persona: model deepseek-flash.`; the delegation record followed the restored route.
 - Delivery: a completed occurrence injected once; a second `deliverPendingReports` call injected nothing; legacy text was recognized without replay; a new `endedAt` with identical text was delivered; `chatStatus` mapped the committed receipt to `endedAt` 150 and returned only the genuinely uncommitted report at 400.
 - Browser timeline: interleaved user/tool/two child reports/assistant turns were displayed in actual-time order across a remount, with both occurrences from one child kept.
@@ -177,7 +177,7 @@ The Host source changes are complete and tested but **not deployed**. Client-onl
 
 ## Scope and mode
 
-Owned files: `packages/dsh-sidebar-agent/**` plus
+Owned files: `packages/dsh-mov-agent/**` plus
 `.agents/scratch/2026-11-04-sidebar-agent-telegram/`. The Telegram bridge package, profile/package
 wiring, live binding state/credentials, and host activation were not touched. The implementation
 session header records the actual Creator preset selection (`agent-preset/selected: cordis`) at seq 3,
@@ -223,11 +223,11 @@ multi-Agent framework was added.
 ## Observed evidence
 
 ```sh
-node --test packages/dsh-sidebar-agent/test/
+node --test packages/dsh-mov-agent/test/
 # 77 tests passed, 0 failed (full suite, including the browser fixture)
-node --test packages/dsh-sidebar-agent/test/settings.test.mjs packages/dsh-sidebar-agent/test/telegram-glue.test.mjs
+node --test packages/dsh-mov-agent/test/settings.test.mjs packages/dsh-mov-agent/test/telegram-glue.test.mjs
 # 32 tests passed (Config/effective/save/invalid/conflict; owner routing/off default//new/real factory)
-node --check packages/dsh-sidebar-agent/{index,client,telegram-host}.js
+node --check packages/dsh-mov-agent/{index,client,telegram-host}.js
 # all syntax checks passed; package.json and locale JSON parse
 git diff --check
 # no tracked whitespace errors; the package itself is untracked in main
@@ -315,7 +315,7 @@ Do not activate this glue while the parent/other Telegram worker is running.
 ## Tests
 
 ```sh
-node --test packages/dsh-sidebar-agent/test/       # 83 passed
+node --test packages/dsh-mov-agent/test/       # 83 passed
 node --test packages/dsh-telegram-session-bridge/test/  # 94 passed
 node --check ... ; git diff --check
 ```
