@@ -196,7 +196,7 @@ window.__ModuleLoader__.load({
   border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;
   line-height:20px;text-align:left;cursor:pointer;min-width:0;border-radius:6px}
 .sa-activityHeader:hover{color:var(--dsw-alias-label-primary)}
-.sa-toolItem[data-grouped]{margin-top:-16px;margin-left:21px;padding-left:10px;
+.sa-activityBody{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 21px;padding-left:10px;
   border-left:1px solid var(--dsw-alias-border-l1)}
 .sa-toolRow{display:flex;align-items:center;gap:7px;color:var(--dsw-alias-label-secondary);
   font-size:12.5px;line-height:20px;min-width:0;max-width:100%}
@@ -661,7 +661,7 @@ window.__ModuleLoader__.load({
       const phrase = toolPhrase(message.name, message.summary);
       const detail = message.result;
       const detailId = `sa-tool-detail-${message.id}`;
-      return h('div', { className: 'sa-toolItem', 'data-sa-item': '', 'data-grouped': nested || undefined, id: `sa-tool-row-${message.id}`, hidden },
+      return h('div', { className: 'sa-toolItem', 'data-sa-item': '', 'data-grouped': nested || undefined },
         h('div', { className: 'sa-toolRow', style: nested ? { paddingLeft: 0 } : undefined },
           h('span', { className: 'sa-toolIcon' }, h(ToolIcon, { name: message.name })),
           h('span', { className: 'sa-toolPhrase' }, phrase),
@@ -685,13 +685,19 @@ window.__ModuleLoader__.load({
         message.image ? h(ChatImage, { request: message.image, alt: 'Read image', image, style: { display: 'block', maxWidth: '100%', maxHeight: 220, borderRadius: 8, objectFit: 'contain', margin: '4px 0 6px 21px' } }) : null);
     }
 
-    function ActivityGroup({ tools, t, onToggle, open, onExpanded }) {
+    // Expanded calls render inside one capped scroll region; the header stays
+    // outside it. Rows are keyed by tool id in the body, and each tool's open
+    // state lives in TranscriptItems, so it survives collapsing the group and
+    // a single call gaining a sibling (that row remounts into the body; its
+    // open detail comes back, but keyboard focus inside it does not).
+    function ActivityGroup({ tools, t, image, onToggle, open, onExpanded, expandedTools, onToolExpanded }) {
       const failed = tools.filter(tool => tool.isError === true).length;
+      const bodyId = `sa-activity-body-${tools[0].id}`;
       return h('div', { className: 'sa-activity', 'data-sa-item': '' },
         h('button', {
           type: 'button', className: 'sa-activityHeader',
           'aria-expanded': open,
-          'aria-controls': tools.map(tool => `sa-tool-row-${tool.id}`).join(' '),
+          'aria-controls': open ? bodyId : undefined,
           'aria-label': t(open ? 'activity.hide' : 'activity.show', { count: tools.length }),
           onClick: event => {
             const change = () => onExpanded(!open);
@@ -703,7 +709,15 @@ window.__ModuleLoader__.load({
           h('span', { className: 'sa-toolPhrase' }, toolPhrase(tools[0].name, tools[0].summary)),
           h('span', { className: 'sa-count' }, `+${tools.length - 1}`),
           failed > 0 ? h('span', { className: 'sa-failed' }, t('activity.failed', { count: failed })) : null,
-          h('span', { className: 'sa-toolChevron', 'aria-hidden': true }, open ? '\u25be' : '\u25b8')));
+          h('span', { className: 'sa-toolChevron', 'aria-hidden': true }, open ? '\u25be' : '\u25b8')),
+        open ? h('div', {
+          id: bodyId, className: 'sa-activityBody sa-scrollRegion', tabIndex: 0, role: 'region',
+          'aria-label': t('activity.body'), onKeyDown: containScrollKeys,
+        },
+          tools.map((tool) => h(ToolRow, {
+            key: tool.id, message: tool, t, image, onToggle, nested: true,
+            expanded: expandedTools.has(tool.id), onExpanded: onToolExpanded,
+          }))) : null);
     }
 
     // Capture before React changes a group header/indentation. A reader away
@@ -725,8 +739,9 @@ window.__ModuleLoader__.load({
     }
 
     /** Grouping is presentation, never the React parent/identity of a tool.
-     * A flat keyed sequence keeps focused detail DOM and selection intact even
-     * when messages/reports split a run or a singleton acquires a second tool. */
+     * Each tool's open state is kept here, keyed by tool id, so it survives a
+     * re-render where messages/reports split a run, a single call gains a
+     * sibling, or a group is collapsed and reopened. */
     function TranscriptItems({ items, t, image, labels, onToggle, ctx, scrollRef }) {
       const [expandedTools, setExpandedTools] = React.useState(() => new Set());
       const [expandedGroups, setExpandedGroups] = React.useState(() => new Map());
@@ -740,16 +755,17 @@ window.__ModuleLoader__.load({
         const grouped = item.tools.length > 1;
         // A newly formed group must not conceal a previously expanded tool.
         const open = expandedGroups.get(item.id) ?? item.tools.some(tool => expandedTools.has(tool.id));
+        // Grouped rows render inside the group's capped body; their open state
+        // comes from expandedTools, so it is restored whenever a row remounts.
         return [
           grouped ? h(ActivityGroup, {
-            key: `group:${item.id}`, tools: item.tools, t, onToggle, open,
+            key: `group:${item.id}`, tools: item.tools, t, image, onToggle, open,
+            expandedTools, onToolExpanded: expandTool,
             onExpanded: value => setExpandedGroups(previous => new Map(previous).set(item.id, value)),
-          }) : null,
-          ...item.tools.map(tool => h(ToolRow, {
-            key: `tool:${tool.id}`, message: tool, t, image, onToggle,
-            nested: grouped, hidden: grouped && !open,
-            expanded: expandedTools.has(tool.id), onExpanded: expandTool,
-          })),
+          }) : h(ToolRow, {
+            key: `tool:${item.tools[0].id}`, message: item.tools[0], t, image, onToggle,
+            expanded: expandedTools.has(item.tools[0].id), onExpanded: expandTool,
+          }),
         ];
       });
       return h(TranscriptAnchor, { scrollRef }, rows);
