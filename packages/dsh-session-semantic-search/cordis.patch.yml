@@ -1,0 +1,14 @@
+# Replace the host full-text session index with the hybrid semantic engine.
+#
+# A patch cannot rename an existing row: `name` on a non-insert patch asserts the
+# current plugin name instead of replacing it (dsh-app-boot README, "A user patch
+# replaces the whole matched config"). So the host row is disabled by id — the
+# only by-id way to remove its provider — and this package is inserted as the
+# single `ctx.sessionQuery` provider. It still constructs the SQLite engine
+# internally, on an isolated `sessionQuery` realm, and delegates every method
+# except `searchSessions` to it.
+- id: session-query-sqlite
+  disabled: true
+- insert:
+    - id: session-query-semantic
+      name: '@local/dsh-session-semantic-search'

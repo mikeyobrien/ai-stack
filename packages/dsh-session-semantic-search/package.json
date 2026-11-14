@@ -1,0 +1,53 @@
+{
+  "name": "@local/dsh-session-semantic-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Hybrid session search: dense-vector recall fused with the native full-text index by reciprocal rank, with silent FTS-only fallback.",
+  "exports": {
+    ".": "./index.js",
+    "./lib/sidecar": "./lib/sidecar.js",
+    "./lib/hybrid-engine": "./lib/hybrid-engine.js",
+    "./lib/embed-client": "./lib/embed-client.js",
+    "./lib/fusion": "./lib/fusion.js"
+  },
+  "files": [
+    "index.js",
+    "lib/*.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-session-query": "*",
+    "@deepseek-ai/dsh-session-query-sqlite": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-query": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-query-sqlite": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "eval": "node eval/golden.mjs"
+  }
+}
