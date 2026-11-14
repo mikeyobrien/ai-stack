@@ -17,3 +17,10 @@ research/
 # Generated TLA/TLC and browser evidence output
 states/
 .playwright-mcp/
+
+# Agent loop state and review payloads are per machine.
+.ralph/
+pr-review.json
+
+# Screenshots from UI reviews land in the repo root; keep them out of git.
+/*.png
