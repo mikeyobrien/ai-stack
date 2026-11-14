@@ -1,0 +1,13 @@
+# Native Claude Code provider: the official `claude` CLI as transport/auth
+# only; DSH keeps the loop, tools, and approvals. Experimental.
+# `command` defaults to `claude` on PATH. If that is a version-manager shim
+# (e.g. mise's ~/.local/bin/claude, which mutates global tool state), point
+# `command` at the resolved binary in your profile's own cordis.patch.yml.
+# allowUsageCredits: true permits usage-credit billing on limit.
+- insert:
+    - id: llm-claude-code
+      name: '@local/dsh-llm-claude-code'
+      config:
+        requestTimeoutMs: 180000
+        statusTimeoutMs: 20000
+        allowUsageCredits: false

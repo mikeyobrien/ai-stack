@@ -1,0 +1,29 @@
+{
+  "name": "@local/dsh-llm-claude-code",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Native Claude Code model provider: the official `claude` CLI as transport/auth, DSH keeps the agent loop, tools, and approvals.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "adapter.js",
+    "cli.js",
+    "relay.js",
+    "transcript.js",
+    "inert-mcp.mjs",
+    "catalog.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
