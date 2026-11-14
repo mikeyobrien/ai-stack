@@ -622,14 +622,22 @@ async function startDelegation(ctx, runtime, args, signal) {
 	if (runtime.agent === null || runtime.sessionId === null) throw new Error('the agent is not running yet')
 	if ((args.provider === undefined) !== (args.model === undefined)) throw new Error('provider and model are given together, or both omitted')
 	await validateDelegationRoute(ctx, args.provider, args.model)
+	// Resolve before workspace/session side effects; creation still goes through
+	// the Host factory and mounts the preset recorded in the session header.
+	const presets = ctx.get('agentPresets')
+	if (args.agentPreset !== undefined && (typeof args.agentPreset !== 'string' || args.agentPreset.trim() === '')) {
+		throw new Error('delegate: agentPreset must be a non-empty preset id')
+	}
+	if (args.agentPreset !== undefined && presets === undefined) throw new Error('delegate: agent presets are unavailable')
+	const preset = presets === undefined ? undefined : await presets.resolve(args.agentPreset)
+	if (preset?.broken) throw new Error(`delegate: agent preset "${preset.id}" is unavailable: ${preset.broken}`)
+	const presetId = preset?.id
 	const base = ctx.workingDirectory.get(runtime.agent.session)
 	const workspace = await resolveWorkspace(ctx, args.workspace, base, signal)
 	const agentOptions = args.provider === undefined
 		? inheritedOptionsOf(ctx, runtime)
 		: { provider: args.provider, model: args.model }
 	const sessionId = `session-${randomUUID()}`
-	const presets = ctx.get('agentPresets')
-	const presetId = presets === undefined ? undefined : (await presets.resolve(undefined)).id
 	const handle = await ctx.agents.create({
 		sessionId,
 		agentOptions,
@@ -655,6 +663,7 @@ async function startDelegation(ctx, runtime, args, signal) {
 		workspaceTitle: workspace.title,
 		title,
 		startedAt: Date.now(),
+		...(presetId === undefined ? {} : { agentPreset: presetId }),
 		...(agentOptions.provider === undefined ? {} : { provider: agentOptions.provider }),
 		...(agentOptions.model === undefined ? {} : { model: agentOptions.model }),
 		...(agentOptions.reasoningEffort === undefined ? {} : { reasoningEffort: agentOptions.reasoningEffort }),
@@ -2089,6 +2098,7 @@ function delegationTools(ctx, runtime) {
 					title: { type: 'string', description: 'Sidebar title for the delegation. Defaults to the session\'s automatic title.' },
 					provider: { type: 'string', description: 'Model provider for the delegation. Give it with model; both omitted uses the deployment default.' },
 					model: { type: 'string', description: 'Model id for the delegation. Give it with provider; both omitted uses the deployment default.' },
+					agentPreset: { type: 'string', description: 'Actual agent preset id, such as cordis for Creator plugin work. Omit to use the deployment default; does not change global defaults or session policy.' },
 				},
 				required: ['task', 'workspace'],
 			},
