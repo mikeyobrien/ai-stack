@@ -31,6 +31,13 @@ models selectable as the conversation model.
 - Model metadata comes from the CLI's own `control_response` catalog
   (verified on 2.1.316); the static list is a labeled last resort.
 
+## Enable
+
+Opt-in: add `@local/dsh-llm-claude-code` to `dsh/profile/package.json`
+(`dependencies` as `link:@REPO@/packages/dsh-llm-claude-code`, and `bundles`),
+then run `./install.sh dsh`. It needs the official `claude` CLI logged in with a
+Claude subscription (`claude auth login`).
+
 ## Configuration
 
 | key | default | meaning |
