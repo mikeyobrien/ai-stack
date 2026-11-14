@@ -2852,6 +2852,7 @@ export function apply(ctx, config = {}) {
 			runtime,
 			modelControl: runtime.modelControl,
 			statusControl: runtime.statusControl,
+			attachments: scoped.attachments,
 			config: settings.telegram,
 			stt: settings.stt,
 			env: process.env,

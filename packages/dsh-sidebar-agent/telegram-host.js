@@ -23,6 +23,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { handleVoiceUpdate } from './voice.js'
+import { handlePhotoUpdate, photoAttachment } from './photo.js'
 
 /** Default env var holding the bridge bot token (same identity as the bridge). */
 export const DEFAULT_TELEGRAM_TOKEN_REF = 'DSH_TELEGRAM_SESSION_BRIDGE_BOT_TOKEN'
@@ -117,16 +118,24 @@ export function createAgentOwnerController({ runtime, forward = () => undefined,
 		if (!isAgentSession(sessionId)) return callForward('prompt', request, signal)
 		const agent = requireAgent(sessionId)
 		const content = Array.isArray(request?.content) ? request.content : []
-		if (content.length === 0 || content.some((part) => part?.type !== 'text' || typeof part.text !== 'string' || part.text.trim() === '')) {
-			throw new Error('sidebar-agent owner: only non-empty text prompts are supported')
+		const validText = (part) => part?.type === 'text' && typeof part.text === 'string' && part.text.trim() !== ''
+		const isImage = (part) => part?.type === 'image'
+		if (content.length === 0 || content.some((part) => !validText(part) && !isImage(part))) {
+			throw new Error('sidebar-agent owner: only non-empty text and image parts are supported')
 		}
+		const images = content.filter(isImage)
 		const requestId = typeof request?.requestId === 'string' && request.requestId !== '' ? request.requestId : undefined
 		if (requestId !== undefined && applied.has(requestId)) return applied.get(requestId)
 		const operation = exclusive(async () => {
 			signal?.throwIfAborted?.()
-			const text = content.map((part) => part.text).join('\n')
 			if (runtime.gate !== null && runtime.gate !== undefined && typeof runtime.gate.deliver === 'function') {
-				const delivered = await runtime.gate.deliver(agent, text)
+				// Images ride the same gate as text, so a photo sent mid-turn is
+				// queued or steered by the same rules and keeps its place in line.
+				const text = content.filter(validText).map((part) => part.text).join('\n') || (images.length > 0 ? 'Image' : '')
+				const options = images.length === 0 ? undefined : {
+					createMessage: (finalText) => createUserMessage({ content: [{ type: 'text', text: finalText }, ...images], source: { kind: 'user' } }),
+				}
+				const delivered = await runtime.gate.deliver(agent, text, options)
 				return { ...delivered, sessionId }
 			}
 			const message = createUserMessage({ content, source: { kind: 'user' } })
@@ -266,6 +275,7 @@ export function mediaTypeOf(message) {
  * @param {() => any} [options.forward] - ordinary Session Controller accessor.
  * @param {Record<string, any>} [options.modelControl] - owner model control service.
  * @param {Record<string, any>} [options.statusControl] - owner read-only rich status service.
+ * @param {Record<string, any>} [options.attachments] - host attachment store (saveImages) for photo downloads.
  * @param {() => Promise<any>} [options.importBridge] - bridge module loader.
  * @param {(bridge: any) => (() => void) | undefined} [options.install] - subscription installer.
  * @param {Record<string, any>} [options.logger] - logger.
@@ -281,6 +291,7 @@ export function createTelegramHost({
 	forward = () => undefined,
 	modelControl = null,
 	statusControl = null,
+	attachments = null,
 	importBridge = defaultImportBridge,
 	install,
 	logger = console,
@@ -366,6 +377,20 @@ export function createTelegramHost({
 						logger,
 					})
 					if (voice !== null) return voice
+					if (mediaType === 'photo' && attachments !== null) {
+						const attachment = photoAttachment(message)
+						if (attachment !== null) {
+							return await handlePhotoUpdate({
+								message,
+								attachment,
+								sessionId: runtime.sessionId,
+								bridge,
+								attachments,
+								ownerController,
+								logger,
+							})
+						}
+					}
 				}
 				await bridge.api.sendMessage({
 					chatId: message.chat.id,

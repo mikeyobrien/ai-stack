@@ -230,6 +230,7 @@ test('an enabled glue stays inactive until an explicit start', () => {
 function fakeBridge({ agentSession = AGENT_SESSION, allowedChatIds = [42], binding = null } = {}) {
 	const sent = []
 	const forwarded = []
+	const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 1])
 	const bridge = {
 		options: { allowedChatIds },
 		store: {
@@ -265,7 +266,12 @@ function fakeBridge({ agentSession = AGENT_SESSION, allowedChatIds = [42], bindi
 				return { sessionId, previousSessionId: previous, entry: binding }
 			},
 		},
-		api: { async sendMessage(message) { sent.push(message) } },
+		api: {
+			async sendMessage(message) { sent.push(message) },
+			async getFile(fileId) { return { file_id: fileId, file_path: `files/${fileId}.bin`, file_size: pngBytes.length } },
+			async downloadFile() { return { bytes: pngBytes } },
+		},
+		pngBytes,
 		async handleUpdate(update) {
 			forwarded.push(update)
 			return { handled: true, reason: 'original' }
@@ -695,7 +701,6 @@ test('no allowed non-text update can vanish silently', async () => {
 		['voice', { voice: { file_id: 'v1', file_size: 10, mime_type: 'audio/ogg' } }],
 		['audio', { audio: { file_id: 'a1', file_size: 10, mime_type: 'audio/mpeg' } }],
 		['document', { document: { file_id: 'd1', file_size: 10, mime_type: 'application/pdf' } }],
-		['photo', { photo: [{ file_id: 'p1', file_size: 10 }] }],
 		['video', { video: { file_id: 'vid1', file_size: 10 } }],
 		['sticker', { sticker: { file_id: 's1' } }],
 		['location', { location: { latitude: 1, longitude: 2 } }],
@@ -734,12 +739,105 @@ test('edited and business message shapes receive the same media catch-all', asyn
 	for (const key of ['edited_message', 'business_message', 'edited_business_message']) {
 		const before = bridge.sent.length
 		const result = await glue.handleUpdate({
-			[key]: { message_id: 700 + before, chat: { id: 42, type: 'private' }, from: { id: 42 }, photo: [{ file_id: 'p' }] },
+			[key]: { message_id: 700 + before, chat: { id: 42, type: 'private' }, from: { id: 42 }, video: { file_id: 'v' } },
 		})
 		assert.equal(result.handled, true, `${key} must be handled`)
 		assert.ok(bridge.sent.length > before, `${key} must get a reply`)
 	}
 	assert.equal(bridge.forwarded.length, 0)
+})
+
+function fakeAttachments() {
+	const saved = []
+	return {
+		saved,
+		async saveImages(items) {
+			return items.map((item, index) => {
+				saved.push(item)
+				return { attachmentId: `att-${saved.length - 1}`, mediaType: item.mediaType, byteLength: item.data.length }
+			})
+		},
+	}
+}
+
+test('an owner photo with a caption reaches the prompt path as one image plus caption', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const attachments = fakeAttachments()
+	const { glue, runtime } = startedGlue(bridge, { attachments })
+	await glue.start()
+	const result = await glue.handleUpdate({
+		message: { message_id: 42, chat: { id: 42, type: 'private' }, from: { id: 42 }, photo: [{ file_id: 'p1', file_size: 12, width: 10, height: 10 }], caption: 'the whiteboard' },
+	})
+	assert.equal(result.handled, true)
+	assert.equal(result.prompted, true)
+	assert.equal(result.attachment.attachmentId, 'att-0')
+	assert.equal(bridge.forwarded.length, 0, 'a handled photo never falls through to the bridge')
+	assert.equal(bridge.sent.length, 0, 'a successful photo sends no error reply')
+	assert.equal(runtime.calls.followup.length + runtime.calls.steer.length, 1)
+	const content = runtime.calls.followup[0]?.content ?? runtime.calls.steer[0].content
+	assert.equal(content.length, 2)
+	assert.equal(content[0].type, 'text')
+	assert.equal(content[0].text, 'Photo: the whiteboard')
+	assert.equal(content[1].type, 'image')
+	assert.equal(content[1].attachment.attachmentId, 'att-0')
+	assert.equal(attachments.saved.length, 1)
+	assert.equal(attachments.saved[0].mediaType, 'image/png')
+	assert.equal(attachments.saved[0].name, 'photo.jpg')
+	await glue.stop()
+})
+
+test('a photo whose download is not an image gets one reply and no prompt', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	bridge.api.downloadFile = async () => ({ bytes: new Uint8Array([1, 2, 3]) })
+	const attachments = fakeAttachments()
+	const { glue, runtime } = startedGlue(bridge, { attachments })
+	await glue.start()
+	const result = await glue.handleUpdate({
+		message: { message_id: 43, chat: { id: 42, type: 'private' }, from: { id: 42 }, photo: [{ file_id: 'p2', file_size: 3 }] },
+	})
+	assert.equal(result.handled, true)
+	assert.equal(result.prompted, undefined)
+	assert.equal(result.reason, 'photo-unsupported-format')
+	assert.equal(attachments.saved.length, 0, 'nothing is stored for a non-image download')
+	assert.equal(bridge.forwarded.length, 0)
+	assert.equal(runtime.calls.followup.length + runtime.calls.steer.length, 0, 'no prompt for an unreadable image')
+	assert.equal(bridge.sent.length, 1, 'exactly one reply')
+	assert.match(bridge.sent[0].text, /could not read that image format/i)
+	await glue.stop()
+})
+
+test('a redelivered photo update id is applied once', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const attachments = fakeAttachments()
+	const { glue, runtime } = startedGlue(bridge, { attachments })
+	await glue.start()
+	const update = { message: { message_id: 44, chat: { id: 42, type: 'private' }, from: { id: 42 }, photo: [{ file_id: 'p3', file_size: 12 }], caption: 'twice' } }
+	const [first, second] = await Promise.all([glue.handleUpdate(update), glue.handleUpdate(update)])
+	assert.equal(first.prompted, true)
+	assert.equal(second.prompted, true)
+	assert.equal(first.result.messageId, second.result.messageId)
+	assert.equal(runtime.calls.followup.length + runtime.calls.steer.length, 1, 'a redelivered photo is not applied twice')
+	assert.equal(bridge.sent.length, 0)
+	assert.equal(bridge.forwarded.length, 0)
+	await glue.stop()
+})
+
+test('video and sticker are still refused for an owner chat', async () => {
+	const bridge = fakeBridge({ binding: { chatId: 42, threadId: 0, sessionId: AGENT_SESSION } })
+	const { glue } = startedGlue(bridge, { attachments: fakeAttachments() })
+	await glue.start()
+	for (const [type, payload] of [['video', { video: { file_id: 'vid1', file_size: 10 } }], ['sticker', { sticker: { file_id: 's1' } }]]) {
+		const before = bridge.sent.length
+		const result = await glue.handleUpdate({
+			message: { message_id: 500 + before, chat: { id: 42, type: 'private' }, from: { id: 42 }, ...payload },
+		})
+		assert.equal(result.handled, true, `${type} must be handled`)
+		assert.equal(result.reason, 'update-unsupported', `${type} stays refused`)
+		assert.equal(result.type, type)
+		assert.ok(bridge.sent.length > before, `${type} must get an observable reply`)
+	}
+	assert.equal(bridge.forwarded.length, 0)
+	await glue.stop()
 })
 
 test('traced replay: message 871, agent chat 5822509701, stt enabled reaches full voice branch', async () => {

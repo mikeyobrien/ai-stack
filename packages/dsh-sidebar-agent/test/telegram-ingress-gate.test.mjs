@@ -73,3 +73,16 @@ test('request idempotency still applies through the gate', async (t) => {
 	assert.equal(second.messageId, first.messageId)
 	assert.equal(h.runtime.gate.pendingCount(), 1)
 })
+
+test('owner controller gates a photo like text: queued mid-turn behind earlier text, delivered with its image', async (t) => {
+	const h = await harness(t)
+	await h.controller.prompt(content('first ordinary message'))
+	const image = { type: 'image', attachment: { attachmentId: 'att-1', width: 2, height: 2, name: 'photo.jpg' } }
+	const result = await h.controller.prompt({ sessionId: 'agent-owner-1', requestId: 'r-photo', content: [{ type: 'text', text: 'Photo: the wiring' }, image] })
+	assert.equal(result.queued, true, 'a mid-turn photo is queued, not steered past queued text')
+	assert.equal(h.calls.steer.length, 0)
+	h.runtime.gate.onTurnEnd(h.agent)
+	assert.deepEqual(h.calls.followup.map(textOf), ['first ordinary message', 'Photo: the wiring'])
+	assert.deepEqual(h.calls.followup[1].content.filter((part) => part.type === 'image').map((part) => part.attachment.attachmentId), ['att-1'])
+	await assert.rejects(h.controller.prompt({ sessionId: 'agent-owner-1', content: [{ type: 'text', text: 'ok' }, { type: 'file' }] }), /only non-empty text and image parts/)
+})

@@ -30,6 +30,7 @@
     "pulse-feed.js",
     "machine-meta.js",
     "voice.js",
+    "photo.js",
     "telegram-miniapp.js",
     "telegram-miniapp/index.html",
     "telegram-miniapp/app.js",
