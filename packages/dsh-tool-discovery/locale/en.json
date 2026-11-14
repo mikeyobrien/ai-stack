@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tool Discovery",
+    "description": "Hides a large MCP tool catalog from a fresh session and activates only the tools the model searches for and selects."
+  }
+}

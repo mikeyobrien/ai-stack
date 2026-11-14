@@ -1,0 +1,50 @@
+{
+  "name": "@local/dsh-tool-discovery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Keep MCP tool schemas out of a fresh session's wire until the model asks for them: hide a prefix of global tools per agent and expose one tool_search that finds and activates them.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "README.md",
+    "test/*.test.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-scope": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-session-projection": "*",
+    "zod": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-scope": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-projection": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  }
+}

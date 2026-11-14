@@ -1,0 +1,17 @@
+# Hides a configured prefix of global tools (e.g. the REA MCP catalog) from
+# every fresh agent's wire until the model calls tool_search and picks specific
+# tools, then exposes those. The per-agent restriction unwinds on disposal.
+#
+# `config.prefix` names the tool-name prefix to hide (non-empty). `config.select`
+# is the default active set for a session that has not selected tools yet; a
+# session's own committed selection replaces it, and resume restores that.
+- insert:
+    - id: tool-discovery
+      name: '@local/dsh-tool-discovery'
+      config:
+        prefix: 'mcp__rea__'
+        select: []
+        maxResults: 8
+        maxActive: 8
+        maxSchemaBytes: 16384
+        maxCandidateChars: 200
