@@ -29,12 +29,24 @@ function validate(data) {
   return data;
 }
 
-/** Uses the host filesystem's atomic, version-guarded writes. Never writes caller-supplied paths. */
-export function createBacklogStore({ fs, sessions, now = () => new Date().toISOString() }) {
+/**
+ * Uses the host filesystem's atomic, version-guarded writes. Never writes caller-supplied paths.
+ * A session resolves to the cwd in its header: the live header when the session is loaded,
+ * otherwise the persisted one, so a session whose Agent was disposed keeps its backlog.
+ * Persistence read errors propagate; only a session absent from both, or without a cwd, is
+ * an unknown session.
+ */
+export function createBacklogStore({ fs, sessions, sessionPersistence, now = () => new Date().toISOString() }) {
   const queues = new Map();
+  async function headerOf(sessionId) {
+    const live = sessions.get(sessionId);
+    if (live !== undefined) return live.header;
+    if (sessionPersistence === undefined) return undefined;
+    return (await sessionPersistence.stat(sessionId))?.header;
+  }
   async function locate(sessionId) {
     if (typeof sessionId !== 'string') fail('session is required');
-    const cwd = sessions.get(sessionId)?.header?.cwd;
+    const cwd = (await headerOf(sessionId))?.cwd;
     if (typeof cwd !== 'string') fail('unknown session');
     // Reject repository-owned links before resolving the fixed storage location.
     for (const path of ['.agents', BACKLOG_PATH]) {

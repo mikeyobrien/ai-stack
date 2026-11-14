@@ -5,7 +5,9 @@ export class BacklogService extends TypertRemoteService {
   static inject = ['fs', 'sessions'];
   constructor(ctx) {
     super(ctx, 'backlog');
-    this.store = createBacklogStore({ fs: ctx.fs, sessions: ctx.sessions });
+    // Read lazily: a host without session persistence still serves live sessions.
+    const sessionPersistence = { stat: (id, options) => ctx.get('sessionPersistence')?.stat(id, options) };
+    this.store = createBacklogStore({ fs: ctx.fs, sessions: ctx.sessions, sessionPersistence });
   }
   async run(request) { return this.store.run(request); }
 }
