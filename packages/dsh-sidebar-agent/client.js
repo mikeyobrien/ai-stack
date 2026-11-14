@@ -151,7 +151,7 @@ window.__ModuleLoader__.load({
     // stays available to code and tables, which scroll inside their own block.
     const CSS = `
 .sa-page{--sa-chat-content-width:clamp(680px,64%,920px);box-sizing:border-box;height:100%;display:flex;flex-direction:column;position:relative;min-height:0;
-  color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:14px;line-height:1.6;
+  color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:var(--dsh-content-font-size,14px);line-height:1.6;
   --sa-md-base:14px;--sa-md-line:24px;--sa-md-h1:21px;--sa-md-h1-line:30px;--sa-md-h2:19px;--sa-md-h2-line:28px;
   --sa-md-h3:18px;--sa-md-h3-line:26px;--sa-md-table:13px;--sa-md-table-line:22px;--sa-md-code:12px;--sa-md-code-line:19px;
   --dsh-content-font-size:var(--sa-md-base);--dsh-content-font-delta:calc(var(--sa-md-base) - 14px);
@@ -326,6 +326,14 @@ window.__ModuleLoader__.load({
 .sa-body{position:relative;flex:1;min-height:0;display:flex}
 .sa-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .sa-headerActions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none;min-width:0}
+.sa-ctxRing{position:relative;width:18px;height:18px;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.sa-ctxRing svg{position:absolute;inset:0}
+.sa-ctxRing circle{fill:none;stroke-width:2.4}
+.sa-ctxRingTrack{stroke:var(--dsw-alias-border-l2)}
+.sa-ctxRingValue{stroke:var(--dsw-alias-brand-primary,#4d8ef7);stroke-linecap:round;transform:rotate(-90deg);transform-origin:center}
+.sa-ctxRingWarn .sa-ctxRingValue{stroke:var(--dsw-alias-state-warning-primary,#e6c15a)}
+.sa-ctxRingHot .sa-ctxRingValue{stroke:var(--dsw-alias-state-error-primary,#e66a6a)}
+.sa-ctxRingLabel{position:absolute;font-size:8px;font-weight:500;line-height:1;color:var(--dsw-alias-label-secondary);pointer-events:none}
 .sa-iconButton{width:auto;min-width:32px;height:32px;flex:none;border-radius:8px;border:none;
   background:transparent;color:var(--dsw-alias-label-secondary);display:inline-flex;align-items:center;
   justify-content:center;gap:6px;cursor:pointer;padding:0 8px}
@@ -981,7 +989,7 @@ window.__ModuleLoader__.load({
     function Composer({
       t, draft, setDraft, files, attach, pasteClipboard, dropFiles, removeFile, send, stop, running, sending, sendError,
       selection, catalogData, catalogError, menuOpen, menuMode, openMenu, closeMenu,
-      chooseModel, chooseEffort, inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef,
+      chooseModel, chooseEffort, inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef, ctxUsage,
     }) {
       const composing = React.useRef(false);
       const [dragging, setDragging] = React.useState(false);
@@ -1030,6 +1038,7 @@ window.__ModuleLoader__.load({
                 onClick: () => removeFile(index),
               }, '\u00d7')))),
           h('div', { className: 'sa-controls' },
+            h(ContextRing, { usage: ctxUsage }),
             selection === null || selection === undefined ? null : h('button', {
               type: 'button', ref: modelButtonRef, className: 'sa-control sa-model',
               title: modelName, 'aria-haspopup': 'menu',
@@ -1261,6 +1270,31 @@ window.__ModuleLoader__.load({
       }, ...children);
     }
 
+    const CTX_WARN = 70;
+    const CTX_HOT = 90;
+    function ContextRing({ usage }) {
+      if (usage === null || usage === undefined) return null;
+      const percent = typeof usage.percent === 'number' && usage.percent >= 0 ? Math.min(100, usage.percent) : null;
+      if (percent === null) return null;
+      const radius = 7;
+      const circumference = 2 * Math.PI * radius;
+      const hot = percent >= CTX_HOT;
+      const warn = !hot && percent >= CTX_WARN;
+      return h('span', {
+        className: `sa-ctxRing${hot ? ' sa-ctxRingHot' : warn ? ' sa-ctxRingWarn' : ''}`,
+        role: 'img',
+        'aria-label': `Context ${percent}% used of ${usage.window} tokens`,
+        title: `Context ${percent}% · ${Intl.NumberFormat('en', { notation: 'compact' }).format(usage.used ?? 0)}/${Intl.NumberFormat('en', { notation: 'compact' }).format(usage.window)} tokens`,
+      },
+        h('svg', { width: 18, height: 18, viewBox: '0 0 18 18', 'aria-hidden': true },
+          h('circle', { className: 'sa-ctxRingTrack', cx: 9, cy: 9, r: radius }),
+          percent > 0 ? h('circle', {
+            className: 'sa-ctxRingValue', cx: 9, cy: 9, r: radius,
+            strokeDasharray: `${(percent / 100) * circumference} ${circumference}`,
+          }) : null),
+        h('span', { className: 'sa-ctxRingLabel', 'aria-hidden': true }, percent));
+    }
+
     function AgentChat({ useChat, refresh, chat, catalog, setModel, settings, saveSettings, telegramAdopt, image, stop, compact, newConversation, ctx }) {
       const t = useTranslate(ctx);
       const snapshot = useChat((value) => value);
@@ -1331,6 +1365,8 @@ window.__ModuleLoader__.load({
       }, [data, pending]);
       const items = React.useMemo(() => buildItems(allMessages), [allMessages]);
       const streaming = data?.streaming ?? null;
+      // Context usage rides the chat status the page already polls.
+      const ctxUsage = data?.usage ?? null;
 
       React.useEffect(() => {
         setPending((current) => current.filter((message) => !messages.some((known) => known.id === message.id)));
@@ -1834,7 +1870,7 @@ window.__ModuleLoader__.load({
             h(Composer, {
               t, draft, setDraft, files, attach, pasteClipboard, dropFiles, removeFile, send, stop: stopAgent, running, sending, sendError,
               selection, catalogData, catalogError, menuOpen, menuMode, openMenu, closeMenu, chooseModel, chooseEffort,
-              inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef,
+              inputRef, fileInputRef, menuRef, modelButtonRef, effortButtonRef, ctxUsage,
             })),
           panelOpen ? h('div', { key: 'backdrop', className: 'sa-sideBackdrop', onClick: closePanel, 'aria-hidden': true }) : null,
           panelOpen ? h(SettingsPanel, {

@@ -1852,6 +1852,15 @@ function chatStatus(runtime) {
 		reports.push({ id: `report:${key}`, role: 'user', source: 'delegation', text, time: record.endedAt, reportKey: key })
 	}
 	reports.sort((left, right) => left.time - right.time)
+	const usage = lastUsageOf(agent.session)
+	const contextWindow = contextWindowOf(runtime)
+	const used = usage === null ? null : usage.input + usage.cacheRead + usage.cacheWrite
+	const usageView = usage === null || !Number.isSafeInteger(contextWindow) || contextWindow <= 0 || used === null ? null : {
+		used,
+		window: contextWindow,
+		percent: Math.min(100, Math.round((used / contextWindow) * 100)),
+		seq: usage.seq,
+	}
 	return {
 		ready: true,
 		error: null,
@@ -1862,6 +1871,7 @@ function chatStatus(runtime) {
 		streaming: runtime.streamText === '' ? null : runtime.streamText,
 		messages,
 		reports,
+		usage: usageView,
 		truncated: all.length > limit,
 	}
 }
@@ -2538,6 +2548,56 @@ export function createContextControls({ ctx, runtime }) {
 	return { compact, newConversation }
 }
 
+/** A positive integer context window from resolved model info, or null. */
+function contextWindowValue(info) {
+	const value = info?.context?.contextWindow
+	return Number.isSafeInteger(value) && value > 0 ? value : null
+}
+
+/**
+ * Cache the live selection's context window for cheap status reads, keyed by
+ * provider and model. A failed lookup caches null; the next selection change
+ * retries.
+ * @param {any} ctx - Host context with llm.
+ * @param {any} runtime - shared plugin state.
+ */
+async function refreshContextWindow(ctx, runtime) {
+	const selection = currentSelectionOf(runtime)
+	if (selection === null) {
+		runtime.contextWindowRef = { provider: null, model: null, current: null }
+		return
+	}
+	const entry = { provider: selection.provider, model: selection.model, current: null }
+	runtime.contextWindowRef = entry
+	try {
+		entry.current = contextWindowValue(await ctx.llm.resolveModelInfo(selection.provider, selection.model))
+	} catch {
+		entry.current = null
+	}
+}
+
+/**
+ * The context window for the current selection, synchronously. After a model
+ * switch the cached window belongs to the old model: return null (no ring)
+ * and resolve the new one in the background rather than show a wrong percent.
+ * @param {any} runtime - shared plugin state.
+ * @returns {number | null} the window, when known for this selection.
+ */
+function contextWindowOf(runtime) {
+	const selection = currentSelectionOf(runtime)
+	const cached = runtime.contextWindowRef
+	if (selection === null) return null
+	if (cached?.provider === selection.provider && cached?.model === selection.model) return cached.current ?? null
+	const llm = runtime.host?.llm
+	if (typeof llm?.resolveModelInfo !== 'function') return null
+	const entry = { provider: selection.provider, model: selection.model, current: null }
+	runtime.contextWindowRef = entry
+	void Promise.resolve()
+		.then(() => llm.resolveModelInfo(selection.provider, selection.model))
+		.then((info) => { entry.current = contextWindowValue(info) }, () => {})
+	return null
+}
+
 /**
  * Create or resume the always-on agent under one stable identity, and attach it
  * to its own Workspace so the Conversation has a workspace to start in.
@@ -2554,6 +2614,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 		const initial = await initialSelectionOf(ctx, agent)
 		runtime.selectionRef = { current: initial }
 		runtime.model = initial ?? null
+		await refreshContextWindow(ctx, runtime)
 		installModelSelection(agentCtx, runtime.selectionRef)
 		composeAgent(agentCtx, ctx, runtime)
 	}
@@ -2584,6 +2645,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 			const initial = await initialSelectionOf(ctx, agent)
 			runtime.selectionRef = { current: initial }
 			runtime.model = initial ?? null
+			await refreshContextWindow(ctx, runtime)
 			installModelSelection(agent.ctx, runtime.selectionRef)
 			composeAgent(agent.ctx, ctx, runtime)
 		} else {
