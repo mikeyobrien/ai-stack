@@ -4,7 +4,13 @@ import { createContextControls } from '../index.js'
 
 function harness({ status = 'idle', pending = 0, compactResult = { shadowedSeqs: [1, 2] } } = {}) {
 	const events = { archive: [], dispose: 0, rename: [], rebind: [], save: 0, create: [] }
-	const compact = { async compactNow() { return compactResult } }
+	const compact = { async compactNow(_agent, signal) {
+		if (signal === null || typeof signal !== 'object' || !('aborted' in signal)) {
+			throw new Error('signal must be an AbortSignal')
+		}
+		signal.throwIfAborted()
+		return compactResult
+	} }
 	const oldAgent = { status, options: { provider: 'deepseek-official', model: 'deepseek-flash' }, session: { id: 'agent-old' } }
 	const oldHandle = { async dispose() { events.dispose += 1 } }
 	const runtime = {
@@ -42,10 +48,15 @@ test('compact uses the native compaction service and reports readable results', 
 test('compact/new are blocked with readable errors while running or queued', async () => {
 	const running = harness({ status: 'running' })
 	const controls = createContextControls({ ctx: running.ctx, runtime: running.runtime })
-	await assert.rejects(controls.compact(), /Stop the running turn/)
 	await assert.rejects(controls.newConversation(), /Stop the running turn/)
 	const queued = harness({ pending: 2 })
 	await assert.rejects(createContextControls({ ctx: queued.ctx, runtime: queued.runtime }).newConversation(), /Clear the queued messages/)
+})
+
+test('compact rejects immediately while a turn is running', async () => {
+	const h = harness({ status: 'running' })
+	const controls = createContextControls({ ctx: h.ctx, runtime: h.runtime })
+	await assert.rejects(controls.compact(), /Stop the running turn/)
 })
 
 test('new conversation archives the old session, preserves runtime state, rebinds Telegram and disposes the old agent', async () => {

@@ -2461,6 +2461,9 @@ export function createContextControls({ ctx, runtime }) {
 		return inFlight
 	}
 	const compact = () => run('compact', async () => {
+		// Compaction is a maintenance job the native runner only accepts on an
+		// idle agent, so reject a running turn or queued work immediately instead
+		// of waiting.
 		const blocked = busy()
 		if (blocked !== null) throw new Error(blocked)
 		const compaction = ctx.get?.('compaction')
@@ -2468,7 +2471,9 @@ export function createContextControls({ ctx, runtime }) {
 			throw new Error('Native compaction is unavailable: ctx.compaction.compactNow is missing.')
 		}
 		try {
-			const result = await compaction.compactNow(runtime.agent, undefined, 'owner-compact')
+			// No owning turn exists for a user-initiated maintenance compact, so
+			// pass a fresh one-shot request-scoped signal.
+			const result = await compaction.compactNow(runtime.agent, new AbortController().signal, 'owner-compact')
 			return result === null
 				? { ok: true, compacted: false, message: 'Nothing safe to compact yet.' }
 				: { ok: true, compacted: true, message: `Compacted ${result.shadowedSeqs?.length ?? 0} context items.` }
