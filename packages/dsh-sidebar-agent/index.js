@@ -2003,6 +2003,7 @@ function composeAgent(agentCtx, ctx, runtime) {
 		'You stay available across conversations and browser sessions.',
 		'Delegations are sessions in workspaces: call delegate with the brief and a workspace directory. The new session runs the brief on its own and appears in the sidebar under that workspace.',
 		'Do not delegate through the subagent tools.',
+		'Hand off any work that is exploratory, touches several files, or will likely need more than about 10 tool calls by calling delegate; keep inline work to quick reads, direct answers, and checking a delegation\'s results against real artifacts.',
 		'When a delegation ends, its report arrives in this conversation. delegations lists what you started; steer_delegation corrects or continues one; stop_delegation ends one.',
 	].join(' ')
 	if (agentCtx.get('systemPrompt') !== undefined) {
