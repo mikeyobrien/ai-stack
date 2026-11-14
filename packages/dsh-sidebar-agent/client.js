@@ -369,6 +369,9 @@ window.__ModuleLoader__.load({
 .sa-dmRow{display:flex;flex-direction:column;gap:6px;min-width:0}
 .sa-dmRow .sa-button{align-self:flex-start}
 @media (max-width:520px){
+  .sa-header{flex-wrap:wrap}
+  .sa-title{flex:1 0 auto;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .sa-headerActions{max-width:100%;flex-wrap:wrap}
   .sa-page{font-size:16px;
     --sa-md-base:16px;--sa-md-line:26px;--sa-md-h1:23px;--sa-md-h1-line:32px;--sa-md-h2:21px;--sa-md-h2-line:30px;
     --sa-md-h3:20px;--sa-md-h3-line:28px;--sa-md-table:14px;--sa-md-table-line:23px;--sa-md-code:13px;--sa-md-code-line:20px}
