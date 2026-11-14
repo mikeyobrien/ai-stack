@@ -24,6 +24,7 @@ const React = {
 	useRef() { return { current: null } },
 	useCallback(callback) { return callback },
 	Fragment: 'Fragment',
+	Component: class { constructor(props) { this.props = props } },
 }
 const primitives = { MarkdownText(props) { return createElement('markdown', props) }, StateDot(props) { return createElement('dot', props) } }
 const client = definition.factory((name) => {

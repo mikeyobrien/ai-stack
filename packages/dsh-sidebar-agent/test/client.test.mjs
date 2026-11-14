@@ -28,6 +28,7 @@ function createElement(type, props, ...children) {
 	return { type, props: props ?? {}, children }
 }
 const React = {
+	Component: class { constructor(props) { this.props = props } },
 	createElement,
 	useState(initial) { return [initial, () => {}] },
 	useEffect() {},

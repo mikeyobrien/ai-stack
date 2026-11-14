@@ -390,10 +390,12 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		const collapsed = await page.locator('.sa-activityHeader').innerText()
 		assert.match(collapsed, /Ran npm test/)
 		assert.ok(!/\{|\}|mcp__|"/.test(collapsed), 'collapsed activity exposes no raw JSON or wire id')
+		const grouped = page.locator('.sa-toolItem[data-grouped]:not([hidden])')
+		assert.equal(await grouped.count(), 0, 'collapsed calls stay hidden')
 		await page.locator('.sa-activityHeader').click()
 		await page.waitForTimeout(100)
-		assert.equal(await page.locator('.sa-toolItem').count(), 3)
-		assert.match(await page.locator('.sa-activityBody').innerText(), /Failed/)
+		assert.equal(await grouped.count(), 3, 'expanding shows the three grouped calls')
+		assert.match((await grouped.allInnerTexts()).join('\n'), /Failed/)
 
 		await setScenario('report')
 		assert.equal(await page.locator('.sa-report').count(), 1)
@@ -472,7 +474,9 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 			const groups = [...element.querySelectorAll('.sa-activity')]
 			for (let index = 0; index < groups.length; index += 1) {
 				const group = groups[index]
-				const next = group.nextElementSibling
+				// Grouped calls are flat siblings after the header, hidden while collapsed.
+				let next = group.nextElementSibling
+				while (next !== null && next.matches('.sa-toolItem[data-grouped]')) next = next.nextElementSibling
 				if (next === null || !next.classList.contains('sa-turn')) continue
 				const groupTop = group.getBoundingClientRect().top - box.top + element.scrollTop
 				element.scrollTop = Math.max(0, groupTop + group.offsetHeight + 20)
@@ -604,7 +608,7 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		assert.ok(desktop.clientHeight > 0 && mobile.clientHeight > 0 && narrow.clientHeight > 0)
 	})
 
-	await t.test('long activity bodies cap and nested tool results stay bounded', async () => {
+	await t.test('a long expanded activity lists its calls in the transcript and tool results stay bounded', async () => {
 		await page.setViewportSize({ width: 390, height: 844 })
 		await reset()
 		await setScenario('longActivity')
@@ -613,37 +617,16 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		await header.scrollIntoViewIfNeeded()
 		await header.click()
 		await page.waitForTimeout(200)
-		const body = page.locator('.sa-activityBody').first()
-		const metrics = await body.evaluate((el) => ({
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-			overflowY: getComputedStyle(el).overflowY,
-			overscroll: getComputedStyle(el).overscrollBehaviorY,
-			role: el.getAttribute('role'),
-			tabIndex: el.tabIndex,
-			headerOutside: el.previousElementSibling?.classList.contains('sa-activityHeader') === true,
-		}))
-		assert.ok(metrics.scrollHeight > metrics.clientHeight, `activity body scrolls (${metrics.scrollHeight}/${metrics.clientHeight})`)
-		assert.ok(metrics.clientHeight <= 422 + 2, `activity body capped (${metrics.clientHeight})`)
-		assert.equal(metrics.overflowY, 'auto')
-		assert.equal(metrics.overscroll, 'contain')
-		assert.equal(metrics.role, 'region')
-		assert.equal(metrics.tabIndex, 0)
-		assert.equal(metrics.headerOutside, true)
+		// Grouping is presentation only: expanded calls are ordinary transcript
+		// rows that scroll with the conversation, each controlled by the header.
+		const rows = page.locator('.sa-toolItem[data-grouped]:not([hidden])')
+		const rowCount = await rows.count()
+		assert.ok(rowCount > 1, `expanded calls are visible rows (${rowCount})`)
+		const controls = await header.getAttribute('aria-controls')
+		assert.equal(controls?.split(' ').length, rowCount, 'the header controls every grouped row')
+		assert.equal(await header.getAttribute('aria-expanded'), 'true')
 
-		await header.focus()
-		await page.keyboard.press('Tab')
-		const focused = await page.evaluate(() => ({
-			cls: document.activeElement?.className ?? '',
-			outline: document.activeElement === null ? 'none' : getComputedStyle(document.activeElement).outlineStyle,
-		}))
-		assert.match(focused.cls, /sa-activityBody/)
-		assert.notEqual(focused.outline, 'none')
-		await page.keyboard.press('End')
-		await page.waitForTimeout(200)
-		const scroll = await body.evaluate((el) => ({ top: el.scrollTop, max: el.scrollHeight - el.clientHeight }))
-		assert.ok(scroll.top >= scroll.max - 2, `keyboard reaches the final activity row (${scroll.top}/${scroll.max})`)
-
+		const body = rows.first()
 		const chevron = body.locator('.sa-toolChevron').first()
 		await chevron.scrollIntoViewIfNeeded()
 		await chevron.click()
@@ -667,7 +650,7 @@ test('isolated Agent chat fixture', { skip: skipReason, timeout: 180_000 }, asyn
 		await header.scrollIntoViewIfNeeded()
 		await header.click()
 		await page.waitForTimeout(100)
-		assert.equal(await page.locator('.sa-activityBody').count(), 0)
+		assert.equal(await rows.count(), 0, 'collapsing hides the grouped rows again')
 		assert.equal(await header.isVisible(), true)
 	})
 

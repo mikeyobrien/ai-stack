@@ -196,7 +196,7 @@ window.__ModuleLoader__.load({
   border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;
   line-height:20px;text-align:left;cursor:pointer;min-width:0;border-radius:6px}
 .sa-activityHeader:hover{color:var(--dsw-alias-label-primary)}
-.sa-activityBody{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px 21px;padding-left:10px;
+.sa-toolItem[data-grouped]{margin-top:-16px;margin-left:21px;padding-left:10px;
   border-left:1px solid var(--dsw-alias-border-l1)}
 .sa-toolRow{display:flex;align-items:center;gap:7px;color:var(--dsw-alias-label-secondary);
   font-size:12.5px;line-height:20px;min-width:0;max-width:100%}
@@ -655,12 +655,13 @@ window.__ModuleLoader__.load({
         h(MarkdownText, { text, streaming: streaming === true, labels }));
     }
 
-    function ToolRow({ message, t, image, onToggle, nested }) {
-      const [open, setOpen] = React.useState(false);
+    function ToolRow({ message, t, image, onToggle, nested, expanded, onExpanded, hidden = false }) {
+      const [localOpen, setLocalOpen] = React.useState(false);
+      const open = expanded ?? localOpen;
       const phrase = toolPhrase(message.name, message.summary);
       const detail = message.result;
       const detailId = `sa-tool-detail-${message.id}`;
-      return h('div', { className: 'sa-toolItem', 'data-sa-item': '' },
+      return h('div', { className: 'sa-toolItem', 'data-sa-item': '', 'data-grouped': nested || undefined, id: `sa-tool-row-${message.id}`, hidden },
         h('div', { className: 'sa-toolRow', style: nested ? { paddingLeft: 0 } : undefined },
           h('span', { className: 'sa-toolIcon' }, h(ToolIcon, { name: message.name })),
           h('span', { className: 'sa-toolPhrase' }, phrase),
@@ -669,7 +670,7 @@ window.__ModuleLoader__.load({
             type: 'button', className: 'sa-toolChevron',
             onClick: (event) => {
               const item = event.currentTarget.closest('[data-sa-item]');
-              const change = () => setOpen((value) => !value);
+              const change = () => onExpanded ? onExpanded(message.id, !open) : setLocalOpen(value => !value);
               if (onToggle === undefined) change();
               else onToggle(item, change);
             },
@@ -684,37 +685,74 @@ window.__ModuleLoader__.load({
         message.image ? h(ChatImage, { request: message.image, alt: 'Read image', image, style: { display: 'block', maxWidth: '100%', maxHeight: 220, borderRadius: 8, objectFit: 'contain', margin: '4px 0 6px 21px' } }) : null);
     }
 
-    function ActivityGroup({ tools, t, image, onToggle }) {
-      const [open, setOpen] = React.useState(false);
-      const failed = tools.filter((tool) => tool.isError === true).length;
-      if (tools.length === 1) return h(ToolRow, { message: tools[0], t, image, onToggle, nested: true });
-      const first = toolPhrase(tools[0].name, tools[0].summary);
-      const bodyId = `sa-activity-body-${tools[0].id}`;
+    function ActivityGroup({ tools, t, onToggle, open, onExpanded }) {
+      const failed = tools.filter(tool => tool.isError === true).length;
       return h('div', { className: 'sa-activity', 'data-sa-item': '' },
         h('button', {
           type: 'button', className: 'sa-activityHeader',
           'aria-expanded': open,
-          'aria-controls': open ? bodyId : undefined,
-          'aria-label': open
-            ? t('activity.hide', { count: tools.length })
-            : t('activity.show', { count: tools.length }),
-          onClick: (event) => {
-            const item = event.currentTarget.closest('[data-sa-item]');
-            const change = () => setOpen((value) => !value);
-            if (onToggle === undefined) change();
-            else onToggle(item, change);
+          'aria-controls': tools.map(tool => `sa-tool-row-${tool.id}`).join(' '),
+          'aria-label': t(open ? 'activity.hide' : 'activity.show', { count: tools.length }),
+          onClick: event => {
+            const change = () => onExpanded(!open);
+            if (onToggle) onToggle(event.currentTarget.closest('[data-sa-item]'), change);
+            else change();
           },
         },
           h('span', { className: 'sa-toolIcon' }, h(ToolIcon, { name: tools[0].name })),
-          h('span', { className: 'sa-toolPhrase' }, first),
+          h('span', { className: 'sa-toolPhrase' }, toolPhrase(tools[0].name, tools[0].summary)),
           h('span', { className: 'sa-count' }, `+${tools.length - 1}`),
           failed > 0 ? h('span', { className: 'sa-failed' }, t('activity.failed', { count: failed })) : null,
-          h('span', { className: 'sa-toolChevron', 'aria-hidden': true }, open ? '\u25be' : '\u25b8')),
-        open ? h('div', {
-          id: bodyId, className: 'sa-activityBody sa-scrollRegion', tabIndex: 0, role: 'region',
-          'aria-label': t('activity.body'), onKeyDown: containScrollKeys,
-        },
-          tools.map((tool) => h(ToolRow, { key: tool.id, message: tool, t, image, onToggle, nested: true }))) : null);
+          h('span', { className: 'sa-toolChevron', 'aria-hidden': true }, open ? '\u25be' : '\u25b8')));
+    }
+
+    // Capture before React changes a group header/indentation. A reader away
+    // from the bottom keeps the focused detail at the same viewport position;
+    // pinned readers retain the existing follow-latest behavior.
+    class TranscriptAnchor extends React.Component {
+      getSnapshotBeforeUpdate() {
+        const scroll = this.props.scrollRef.current;
+        const detail = document.activeElement;
+        if (!scroll || !detail?.classList.contains('sa-toolDetail') || !scroll.contains(detail)) return null;
+        if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 48) return null;
+        return { detail, top: detail.getBoundingClientRect().top };
+      }
+      componentDidUpdate(_previousProps, _previousState, anchor) {
+        if (!anchor?.detail.isConnected) return;
+        this.props.scrollRef.current.scrollTop += anchor.detail.getBoundingClientRect().top - anchor.top;
+      }
+      render() { return this.props.children; }
+    }
+
+    /** Grouping is presentation, never the React parent/identity of a tool.
+     * A flat keyed sequence keeps focused detail DOM and selection intact even
+     * when messages/reports split a run or a singleton acquires a second tool. */
+    function TranscriptItems({ items, t, image, labels, onToggle, ctx, scrollRef }) {
+      const [expandedTools, setExpandedTools] = React.useState(() => new Set());
+      const [expandedGroups, setExpandedGroups] = React.useState(() => new Map());
+      const expandTool = (id, open) => setExpandedTools(previous => {
+        const next = new Set(previous);
+        if (open) next.add(id); else next.delete(id);
+        return next;
+      });
+      const rows = items.flatMap(item => {
+        if (item.kind !== 'tools') return [h(MessageRow, { key: `message:${item.id}`, message: item.message, t, image, labels, onToggle, ctx })];
+        const grouped = item.tools.length > 1;
+        // A newly formed group must not conceal a previously expanded tool.
+        const open = expandedGroups.get(item.id) ?? item.tools.some(tool => expandedTools.has(tool.id));
+        return [
+          grouped ? h(ActivityGroup, {
+            key: `group:${item.id}`, tools: item.tools, t, onToggle, open,
+            onExpanded: value => setExpandedGroups(previous => new Map(previous).set(item.id, value)),
+          }) : null,
+          ...item.tools.map(tool => h(ToolRow, {
+            key: `tool:${tool.id}`, message: tool, t, image, onToggle,
+            nested: grouped, hidden: grouped && !open,
+            expanded: expandedTools.has(tool.id), onExpanded: expandTool,
+          })),
+        ];
+      });
+      return h(TranscriptAnchor, { scrollRef }, rows);
     }
 
     const MACHINE_META = /\n<!--meta:([\s\S]*?)-->\s*$/;
@@ -1850,9 +1888,7 @@ window.__ModuleLoader__.load({
               },
                 h('div', { className: 'sa-column' },
                   data.truncated === true ? h('p', { className: 'sa-muted' }, t('earlier')) : null,
-                  items.map((item) => item.kind === 'tools'
-                    ? h(ActivityGroup, { key: item.id, tools: item.tools, t, image, onToggle: toggleWithoutPin })
-                    : h(MessageRow, { key: item.id, message: item.message, t, image, labels, onToggle: toggleWithoutPin, ctx })),
+                  h(TranscriptItems, { items, t, image, labels, onToggle: toggleWithoutPin, ctx, scrollRef: listRef }),
                   streaming === null ? null : h('div', { className: 'sa-turn sa-assistant' },
                     h(MarkdownBody, { text: streaming, streaming: true, labels })),
                   error === null || error === undefined ? null : h('p', { className: 'sa-failure', role: 'alert' }, error))),
