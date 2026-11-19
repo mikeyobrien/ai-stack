@@ -6,6 +6,8 @@ supported product.
 
 ```text
 ai-stack/
+├── agents/
+│   └── AGENTS.md                # shared base rules for all coding agents
 ├── dsh/profile/                 # portable DSH profile (bundles + patch)
 ├── docs/                        # experimental capability runbook
 ├── packages/                    # DSH plugins (pnpm workspace)
@@ -13,13 +15,14 @@ ai-stack/
 │   ├── dsh-client-sidebar-editor/  # opt-in sidebar file editor
 │   ├── dsh-principles/          # principles as a prompt section + tools
 │   └── mov-skills/              # skills provider; serves ../skills/
-├── pi/                          # pi settings, models, instructions, extensions
+├── pi/                          # pi settings, models, extensions
 │   ├── settings.json
 │   ├── models.json
-│   ├── AGENTS.md
 │   ├── npm/                     # pi extension packages
 │   ├── themes/
 │   └── extensions/              # user pi extensions
+├── scripts/
+│   └── sync-agents-md.sh        # symlinks ~/.agents/AGENTS.md to all agents
 ├── skills/                      # user-level skills, distributed here
 │   ├── delegate/  first-principles/  html-report/  improve-readability/
 │   ├── one-pager/  prior-art/  research/  ui-ux-pass/  verified-delivery/
@@ -38,9 +41,10 @@ ai-stack/
 export SPARKS_API_KEY=...
 export DSH_SPARKS_BASE_URL=http://your-host:8888/v1
 
-./install.sh          # DSH profile + pi config
+./install.sh          # DSH profile + pi config + shared AGENTS.md
 ./install.sh dsh      # DSH only
-./install.sh pi       # pi only
+./install.sh pi       # pi + shared AGENTS.md
+./install.sh agents   # shared AGENTS.md symlinks only
 
 dsh --profile meta
 ```
@@ -55,15 +59,19 @@ dependency wherever the checkout lives.
 
 | Repo | Machine |
 | --- | --- |
+| `agents/AGENTS.md` | `~/.agents/AGENTS.md`, symlinked across all coding agents via `scripts/sync-agents-md.sh` |
 | `dsh/profile/*` | `$DSH_HOME/profiles/$PROFILE/` |
 | `packages/*` | linked into that profile |
 | `skills/*` | your user-level skills; also symlinked into `~/.pi/agent/skills/` |
-| `pi/settings.json`, `models.json`, `AGENTS.md` | `~/.pi/agent/` |
+| `pi/settings.json`, `models.json` | `~/.pi/agent/` |
 | `pi/npm/package.json` | `~/.pi/agent/npm/`, then `npm install` |
+| `pi/extensions/*.ts` | symlinked into `~/.pi/agent/extensions/` |
 | `pi/themes/omarchy-system.json` | `~/.pi/agent/themes/` |
 
-`~/.claude/CLAUDE.md` already symlinks to `~/.pi/agent/AGENTS.md`, so the same
-global rules reach Claude too.
+`scripts/sync-agents-md.sh` wires `~/.agents/AGENTS.md` into Claude Code,
+Codex, pi, omp, OpenCode, Antigravity/Gemini CLI, Amp, Copilot CLI, DSH, and
+Cursor (`~/.cursor/rules/base.mdc`). Run `./scripts/sync-agents-md.sh --check`
+to verify no agent has drifted.
 
 ## Portability
 
@@ -92,10 +100,11 @@ global rules reach Claude too.
 The plugin packages import `@deepseek-ai/*` without declaring it, so those
 imports resolve through the harness the plugins run inside, not through this
 workspace's own dependencies. `install.sh` links the install's `node_modules`
-one level above the checkout to supply exactly the installed versions:
+inside `packages/` to supply exactly the installed versions without polluting
+the parent directory:
 
 ```text
-~/dsh-workspace/node_modules -> ~/.local/share/dsh/node_modules
+packages/node_modules -> ~/.local/share/dsh/node_modules
 ```
 
 That link is load-bearing, not leftovers: remove it and a plugin still loads

@@ -102,13 +102,13 @@ NODE
   ( cd "$REPO" && pnpm install --config.confirmModulesPurge=false )
 
   # The plugins import @deepseek-ai/* without declaring it, so those imports
-  # resolve only through the harness they run inside. A node_modules one level
-  # above the checkout supplies exactly the installed versions; without it a
-  # plugin loads from the profile but fails the moment Node resolves its import.
+  # resolve only through the harness they run inside. A node_modules symlink
+  # under packages/ supplies the installed harness versions without polluting
+  # the parent directory above the checkout.
   local shared="${DSH_PACKAGES:-$HOME/.local/share/dsh/node_modules}"
-  local seam="$(dirname "$REPO")/node_modules"
+  local seam="$REPO/packages/node_modules"
   if [ -d "$shared" ]; then
-    [ -L "$seam" ] || ln -sfn "$shared" "$seam"
+    ln -sfn "$shared" "$seam"
     say "plugin resolution: $seam -> $shared"
   else
     say "warning: $shared is missing; repo plugins will not resolve @deepseek-ai/*"
@@ -131,6 +131,18 @@ link_pi_skill() {
   ln -sfn "$2" "$dest"
 }
 
+install_agents() {
+  local agents_dir="$HOME/.agents"
+  local canonical="$agents_dir/AGENTS.md"
+  mkdir -p "$agents_dir"
+  if [ -f "$canonical" ] && [ ! -L "$canonical" ] && ! cmp -s "$REPO/agents/AGENTS.md" "$canonical"; then
+    cp -p "$canonical" "$canonical.bak-$STAMP"
+  fi
+  cp "$REPO/agents/AGENTS.md" "$canonical"
+  "$REPO/scripts/sync-agents-md.sh"
+  say "shared global rules -> $canonical"
+}
+
 install_pi() {
   command -v npm >/dev/null 2>&1 || die "npm is not on PATH"
 
@@ -138,7 +150,7 @@ install_pi() {
            "$PI_AGENT_DIR/themes" "$PI_AGENT_DIR/skills"
 
   local f
-  for f in settings.json models.json AGENTS.md; do
+  for f in settings.json models.json; do
     [ -f "$PI_AGENT_DIR/$f" ] && cp -p "$PI_AGENT_DIR/$f" "$PI_AGENT_DIR/$f.bak-$STAMP"
     cp "$REPO/pi/$f" "$PI_AGENT_DIR/$f"
   done
@@ -147,6 +159,12 @@ install_pi() {
   [ -f "$REPO/pi/npm/package-lock.json" ] \
     && cp "$REPO/pi/npm/package-lock.json" "$PI_AGENT_DIR/npm/package-lock.json"
   ( cd "$PI_AGENT_DIR/npm" && npm install --no-audit --no-fund )
+
+  local ext
+  for ext in "$REPO"/pi/extensions/*.ts; do
+    [ -f "$ext" ] || continue
+    ln -sfn "$ext" "$PI_AGENT_DIR/extensions/$(basename "$ext")"
+  done
 
   # Share the mov-skills skills with pi, mirroring the provider: a folder
   # carrying its own SKILL.md, or one level of children named after the child
@@ -166,13 +184,16 @@ install_pi() {
     done
   done
 
+  install_agents
+
   say "pi configuration -> $PI_AGENT_DIR"
 }
 
 case "${1:-all}" in
-  all) install_dsh; install_pi ;;
-  dsh) install_dsh ;;
-  pi)  install_pi ;;
-  -h|--help) say "usage: [PROFILE=<name>] $0 [all|dsh|pi]"; say "PROFILE names the profile the DSH half writes; it is required for all and dsh." ;;
-  *) die "usage: [PROFILE=<name>] $0 [all|dsh|pi]" ;;
+  all)    install_dsh; install_pi ;;
+  dsh)    install_dsh ;;
+  pi)     install_pi ;;
+  agents) install_agents ;;
+  -h|--help) say "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents]"; say "PROFILE names the profile the DSH half writes; it is required for all and dsh." ;;
+  *) die "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents]" ;;
 esac
