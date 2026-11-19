@@ -2,6 +2,10 @@
   "name": "pi-extensions",
   "private": true,
   "dependencies": {
-    "@ollama/pi-web-search": "^0.0.5"
+    "@mobrienv/pi-tidy-tools": "^0.5.4",
+    "pi-agent-browser-native": "^0.9.23",
+    "pi-goal-x": "^0.34.1",
+    "pi-memory": "^0.4.2",
+    "pi-web-access": "^0.48.0"
   }
 }

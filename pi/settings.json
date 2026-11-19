@@ -1,9 +1,16 @@
 {
   "defaultModel": "glm-5.3-flash:cloud",
   "defaultProvider": "ollama",
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.2",
   "theme": "omarchy-system",
   "packages": [
-    "npm:@ollama/pi-web-search"
-  ]
+    "npm:pi-web-access",
+    "npm:@mobrienv/pi-tidy-tools",
+    "npm:pi-memory",
+    "npm:pi-goal-x",
+    "npm:pi-agent-browser-native",
+    "https://github.com/earendil-works/pi-claude-code"
+  ],
+  "hideThinkingBlock": true,
+  "quietStartup": true
 }
