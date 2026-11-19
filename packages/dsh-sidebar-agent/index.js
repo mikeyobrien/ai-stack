@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -25,10 +25,11 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_TELEGRAM_TOKEN_REF, createTelegramHost } from './telegram-host.js'
 import { formatDeploymentCallback } from './deployment-callback.js'
-import { createPulseFeed } from './pulse-feed.js'
+import { createPulseFeed, redact } from './pulse-feed.js'
 import { handleVoiceUpdate } from './voice.js'
 import { createMiniApp } from './telegram-miniapp.js'
 import { createIngressGate } from './ingress-gate.js'
+import { createHeartbeat, heartbeatConfig } from './heartbeat.js'
 
 /** Cordis plugin name. */
 export const name = 'sidebar-agent'
@@ -113,6 +114,16 @@ export const Config = z.object({
 	reasoningEffort: z.string().volatile(),
 	delegationStallMs: z.number().default(DEFAULT_DELEGATION_STALL_MS),
 	delegationStallAutoCancel: z.boolean().default(false),
+	heartbeat: z.object({
+		enabled: z.boolean().default(true),
+		intervalMs: z.number().default(120000),
+		stallMs: z.number().default(300000),
+		observations: z.array(z.object({
+			ownerId: z.string().required(), sessionId: z.string().required(),
+			createdAt: z.number().required(), agentPreset: z.string().required(),
+			assignmentRef: z.string().required(),
+		})).default([]),
+	}).default({}),
 	pulse: z.object({
 		sessions: z.array(z.string()).default([]),
 		minQuietSeconds: z.number().default(60),
@@ -294,6 +305,7 @@ function settingsOf(config) {
 		reasoningEffort,
 		stallTimeoutMs: Number.isSafeInteger(stallMs) && stallMs > 0 ? stallMs : DEFAULT_DELEGATION_STALL_MS,
 		stallAutoCancel: stallAutoCancel === true,
+		heartbeat: heartbeatConfig(configValue(config.heartbeat)),
 		pulse: pulseOf(config.pulse, sponsorValues, sponsorQuiet, sponsorMax),
 		stt: sttOf(config.stt),
 		miniApp: miniAppOf(config.miniApp),
@@ -303,14 +315,15 @@ function settingsOf(config) {
 }
 
 /**
- * Read the durable state file; a missing or unreadable file is an empty state.
+ * Read durable owner state. Only absence is empty; unreadable/incompatible
+ * state fails closed instead of silently replacing the owner.
  * @param {string} path - state file path.
  * @returns {Promise<{sessionId?: string, delegations: any[]}>} the stored state.
  */
 async function loadState(path) {
 	try {
 		const parsed = JSON.parse(await readFile(path, 'utf8'))
-		if (parsed?.version !== STATE_VERSION) return { delegations: [] }
+		if (parsed?.version !== STATE_VERSION) throw new Error('unsupported sidebar state version; refusing to replace owner')
 		return {
 			sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : undefined,
 			reportDeliveryVersion: Number.isInteger(parsed.reportDeliveryVersion) ? parsed.reportDeliveryVersion : 0,
@@ -322,8 +335,8 @@ async function loadState(path) {
 				: [],
 		}
 	} catch (error) {
-		if (error?.code !== 'ENOENT') console.warn(`sidebar-agent: could not read ${path}: ${error.message}`)
-		return { delegations: [] }
+		if (error?.code === 'ENOENT') return { delegations: [] }
+		throw error
 	}
 }
 
@@ -346,15 +359,23 @@ class StateStore {
 	save(state) {
 		const body = JSON.stringify({ version: STATE_VERSION, ...state }, null, 2)
 		const path = this.path
-		this.tail = this.tail.then(async () => {
+		const operation = this.tail.then(async () => {
 			await mkdir(dirname(path), { recursive: true })
 			const temporary = `${path}.tmp-${process.pid}`
 			await writeFile(temporary, body)
+			const file = await open(temporary, 'r')
+			try { await file.sync() } finally { await file.close() }
 			await rename(temporary, path)
-		}).catch((error) => {
-			console.warn(`sidebar-agent: could not write ${path}: ${error.message}`)
+			const directory = await open(dirname(path), 'r')
+			try { await directory.sync() } finally { await directory.close() }
 		})
-		return this.tail
+		// Keep the serialization lane usable after failure, but return the actual
+		// rejecting operation to callers requiring a durability acknowledgment.
+		this.tail = operation.catch((error) => {
+			this.lastError = error
+			console.warn(`sidebar-agent: state write failed (${error?.code ?? 'unknown'})`)
+		})
+		return operation
 	}
 }
 
@@ -545,7 +566,9 @@ function pendingQuestionOf(ctx, runtime) {
  */
 function handleAgentStatus(runtime, payload) {
 	if (payload?.status !== 'idle' || payload?.agent?.id !== runtime.sessionId) return 0
-	return runtime.gate?.onTurnEnd?.(runtime.agent) ?? 0
+	const delivered = runtime.gate?.onTurnEnd?.(runtime.agent) ?? 0
+	void runtime.heartbeat?.idle().catch(() => {})
+	return delivered
 }
 
 /**
@@ -678,7 +701,8 @@ async function startDelegation(ctx, runtime, args, signal) {
 		stallCancelled: false,
 	}
 	runtime.delegations.set(sessionId, record)
-	void runtime.store.save(runtime.snapshot())
+	await runtime.store.save(runtime.snapshot())
+	await runtime.trackHeartbeat?.(record)
 	handle.agent.followup(createUserMessage({
 		content: [{ type: 'text', text: args.task }],
 		source: { kind: 'user' },
@@ -1032,6 +1056,7 @@ async function steerDelegation(ctx, runtime, record, message, signal) {
 	// Covers cold resumes and already-live native/Creator sessions alike.
 	composeDelegate(agent.ctx, ctx)
 	const running = agent.status === 'running'
+	if (!running) await runtime.trackHeartbeat?.(record, true)
 	const userMessage = createUserMessage({ content, source: { kind: 'user' } })
 	if (running) agent.steer(userMessage)
 	else agent.followup(userMessage)
@@ -1889,6 +1914,7 @@ function chatStatus(runtime) {
 	const delivered = committedReportsOf(agent.session)
 	const reports = []
 	for (const record of runtime.delegations.values()) {
+		if (runtime.heartbeat?.owns(record.sessionId)) continue // One machine delivery, not a second synthetic report.
 		if (record.outcome === PENDING || record.reportSuppressed === true) continue
 		const key = reportKeyOf(record)
 		if (key === undefined) continue
@@ -1987,6 +2013,7 @@ async function delegationsOf(ctx, runtime, signal) {
  * @param {any} event - session event.
  */
 function handleDelegationSessionEvent(ctx, runtime, session, event) {
+	if (runtime.shuttingDown) return
 	const record = runtime.delegations.get(session.id)
 	if (record !== undefined) {
 		const now = Date.now()
@@ -1996,6 +2023,17 @@ function handleDelegationSessionEvent(ctx, runtime, session, event) {
 			record.lastActivitySavedAt = now
 			void runtime.store.save(runtime.snapshot())
 		}
+	}
+	if (runtime.heartbeatEnabled) {
+		if (runtime.heartbeat?.owns(session.id)) void runtime.heartbeat.observe(session.id).catch(() => {})
+		if (event.type === 'turn/end' && record !== undefined) {
+			record.outcome = outcomeOf(event.data.reason)
+			record.endedAt = event.time
+			record.lastLine = lastAssistantText(session)
+			record.lastLineChecked = true
+			void runtime.store.save(runtime.snapshot())
+		}
+		return // The heartbeat owns terminal delivery; never also inject a legacy report.
 	}
 	if (event.type !== 'turn/end') return
 	if (record === undefined) return
@@ -2106,6 +2144,13 @@ function delegationTools(ctx, runtime) {
 			async execute(args, exec) {
 				return startDelegation(ctx, runtime, args, exec.signal)
 			},
+		},
+		{
+			name: 'heartbeat_status',
+			description: 'Read supervision cadence, active assignments, pending machine wakes and evidence-limited milestone/stall status. Does not start or control work.',
+			parameters: { type: 'object', additionalProperties: false, properties: {} },
+			output: jsonOutput,
+			execute() { return runtime.heartbeat?.status() ?? { enabled: runtime.heartbeatEnabled === true, ready: false, error: runtime.heartbeatError } },
 		},
 		{
 			name: 'delegations',
@@ -2233,6 +2278,13 @@ export function agentService(runtime) {
 		 */
 		status() {
 			return chatStatus(this.runtime)
+		}
+
+		heartbeatStatus() {
+			return this.runtime.heartbeat?.status() ?? {
+				enabled: this.runtime.heartbeatEnabled === true, ready: false,
+				error: this.runtime.heartbeatError ?? this.runtime.error,
+			}
 		}
 
 		/**
@@ -2403,6 +2455,7 @@ export function agentService(runtime) {
 					parameters: Object.freeze([Object.freeze({ name: 'request', wire: 'request', source: 'json', codec: json })]),
 				}),
 				Object.freeze({ method: 'agentStatus', invocation: Object.freeze({ kind: 'direct' }) }),
+				Object.freeze({ method: 'heartbeatStatus', invocation: Object.freeze({ kind: 'direct' }) }),
 				Object.freeze({
 					method: 'deploymentCallback',
 					invocation: Object.freeze({ kind: 'direct' }),
@@ -2585,6 +2638,9 @@ export function createContextControls({ ctx, runtime }) {
 		runtime.agentHandle = handle
 		runtime.sessionId = sessionId
 		try {
+			// A human-requested conversation change gets a new supervision binding;
+			// old pending intents and observation grants stay with their old owner.
+			await runtime.resetHeartbeat?.()
 			await ctx.sessionTitle.rename(handle.agent.session, runtime.title)
 			await runtime.store.save(runtime.snapshot())
 			if (typeof oldHandle?.dispose === 'function') await oldHandle.dispose().catch(() => {})
@@ -2658,6 +2714,75 @@ function contextWindowOf(runtime) {
  * @param {AbortSignal} signal - startup cancellation.
  * @returns {Promise<void>} fulfillment once the agent is live.
  */
+async function heartbeatObservation(ctx, sessionId, afterSeq = -1) {
+	const live = ctx.agents.get(sessionId)
+	let observation
+	try {
+		observation = live === undefined ? await ctx.sessionQuery.observeSession(sessionId) : null
+		const header = live?.session.header ?? observation.header
+		const events = live?.session.snapshotEvents(Math.max(0, afterSeq + 1)) ?? observation.events.filter((event) => event.seq > afterSeq)
+		const goal = events.findLast((event) => event.type === 'goal/change')?.data?.goal
+		return { header, events, paused: goal?.phase === 'paused' }
+	} finally { observation?.[Symbol.dispose]?.() }
+}
+
+function heartbeatBlocked(ctx, runtime, agent) {
+	if ((runtime.gate?.pendingCount?.() ?? 0) > 0 || pendingQuestionOf(ctx, runtime)) return true
+	const questions = ctx.get('sessionProjections')?.stateOf(agent.session, 'userQuestions')
+	if (questions?.questions?.active?.length > 0) return true
+	const events = agent.session.snapshotEvents()
+	const goal = events.findLast((event) => event.type === 'goal/change')?.data?.goal
+	if (goal?.phase === 'paused' || goal?.phase === 'blocked') return true
+	const end = events.findLast((event) => event.type === 'turn/end')
+	return end?.data.reason.kind === 'blocked' || (end?.data.reason.kind === 'aborted' && end.data.reason.reason?.kind === 'user')
+}
+
+async function startHeartbeat(ctx, settings, runtime) {
+	if (!settings.heartbeat.enabled || runtime.shuttingDown) return
+	let state
+	if (!/^[a-zA-Z0-9._-]+$/.test(runtime.sessionId)) throw new Error('invalid heartbeat owner identity')
+	const path = join(settings.dataDir, 'heartbeat', `${runtime.sessionId}.json`)
+	try { state = JSON.parse(await readFile(path, 'utf8')) }
+	catch (error) { if (error?.code !== 'ENOENT') throw error }
+	if (runtime.shuttingDown) return
+	const store = new StateStore(path)
+	const observations = settings.heartbeat.observations
+	const authorize = (grant) => grant.ownerId === runtime.sessionId
+		&& typeof grant.assignmentRef === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/.test(grant.assignmentRef)
+		&& (grant.source === 'delegate'
+			? runtime.delegations.has(grant.sessionId) && grant.assignmentRef === `delegate:${grant.sessionId}`
+			: grant.source === 'observation' && observations.some((entry) =>
+				['ownerId', 'sessionId', 'createdAt', 'agentPreset', 'assignmentRef'].every((key) => entry[key] === grant[key])))
+	runtime.heartbeat = createHeartbeat({
+		owner: () => runtime.agent, state, config: settings.heartbeat,
+		save: (value) => store.save(value), inspect: (id, cursor) => heartbeatObservation(ctx, id, cursor), authorize,
+		blocked: (agent) => heartbeatBlocked(ctx, runtime, agent),
+		flush: (session) => ctx.sessions.flush(session),
+		suppressed: (target) => runtime.delegations.get(target.sessionId)?.reportSuppressed === true,
+		terminalText: (target) => {
+			const record = runtime.delegations.get(target.sessionId)
+			return record === undefined ? null : reportOf({ ...record, lastLine: redact(record.lastLine ?? '').slice(0, 1200) || null })
+		},
+		onError: (error) => {
+			runtime.heartbeatError = 'Heartbeat persistence/admission failed; inspect status before reactivation.'
+			ctx.logger?.warn?.(`heartbeat admission/persistence failed (${error?.code ?? error?.name ?? 'unknown'}); pending intent retained, automatic admission stopped`)
+		},
+	})
+	runtime.trackHeartbeat = async (record, reassign = false) => {
+		const observation = await heartbeatObservation(ctx, record.sessionId)
+		if (observation.header.parentSession !== runtime.sessionId) return // Never manufacture control lineage.
+		await runtime.heartbeat.enroll({ ownerId: runtime.sessionId, sessionId: record.sessionId,
+			createdAt: observation.header.createdAt, agentPreset: observation.header.agentPreset ?? null,
+			source: 'delegate', assignmentRef: `delegate:${record.sessionId}` }, observation, reassign)
+	}
+	for (const record of runtime.delegations.values()) await runtime.trackHeartbeat(record)
+	for (const entry of observations) {
+		if (entry.ownerId !== runtime.sessionId) continue // A grant to another owner is inert, never transferred.
+		await runtime.heartbeat.enroll({ ...entry, source: 'observation' }, await heartbeatObservation(ctx, entry.sessionId))
+	}
+	await runtime.heartbeat.restore()
+}
+
 async function openAgent(ctx, settings, runtime, stored, signal) {
 	const setup = async (agentCtx, agent) => {
 		await mountPreset(ctx, agentCtx, agent)
@@ -2704,7 +2829,7 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 				const handle = await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup, signal })
 				agent = handle.agent
 				runtime.agentHandle = handle
-			}
+			} else throw new Error('stored sidebar owner is unavailable; refusing to replace its identity')
 		}
 	}
 	if (agent === undefined) {
@@ -2724,12 +2849,12 @@ async function openAgent(ctx, settings, runtime, stored, signal) {
 	}
 	runtime.agent = agent
 	runtime.sessionId = sessionId
-	void runtime.store.save(runtime.snapshot())
+	await runtime.store.save(runtime.snapshot())
 	// Reports that ended while the Host was down were never delivered. Inject
 	// each completion occurrence once; a reload must not re-emit an old Done.
 	// The report header carries the actual end time, so the client can place it
 	// at completion rather than at receipt.
-	deliverPendingReports(agent, runtime, { adoptLegacy: runtime.reportDeliveryVersion !== REPORT_DELIVERY_VERSION })
+	if (!runtime.heartbeatEnabled) deliverPendingReports(agent, runtime, { adoptLegacy: runtime.reportDeliveryVersion !== REPORT_DELIVERY_VERSION })
 }
 
 /**
@@ -2746,6 +2871,10 @@ export function apply(ctx, config = {}) {
 		cwd: settings.cwd,
 		stallTimeoutMs: settings.stallTimeoutMs,
 		stallAutoCancel: settings.stallAutoCancel,
+		heartbeatEnabled: settings.heartbeat.enabled,
+		heartbeat: null,
+		heartbeatError: null,
+		trackHeartbeat: null,
 		/** The resolved row config, whose volatile members are live references. */
 		config,
 		/** The profile entry id this plugin row owns. */
@@ -2843,8 +2972,14 @@ export function apply(ctx, config = {}) {
 			web.effect(() => () => {}, 'sidebar-agent: mini app route lifecycle')
 		})
 	}
-	ctx.inject(['agents', 'sessionQuery', 'workspaceRegistry', 'sessionTitle', 'workingDirectory', 'fs', 'llm', 'attachments'], (scoped) => {
+	ctx.inject(['agents', 'sessions', 'sessionQuery', 'workspaceRegistry', 'sessionTitle', 'workingDirectory', 'fs', 'llm', 'attachments'], (scoped) => {
 		runtime.host = scoped
+		runtime.resetHeartbeat = async () => {
+			await runtime.heartbeat?.close()
+			runtime.heartbeat = null
+			runtime.trackHeartbeat = null
+			await startHeartbeat(scoped, settings, runtime)
+		}
 		runtime.pendingQuestion = () => pendingQuestionOf(scoped, runtime)
 		runtime.modelControl = createOwnerModelControl(scoped, runtime)
 		runtime.statusControl = createOwnerStatusControl(scoped, runtime)
@@ -2881,6 +3016,9 @@ export function apply(ctx, config = {}) {
 					if (record?.sessionId !== undefined) runtime.delegations.set(record.sessionId, record)
 				}
 				await openAgent(scoped, settings, runtime, stored, controller.signal)
+				if (controller.signal.aborted) return
+				await startHeartbeat(scoped, settings, runtime)
+				if (controller.signal.aborted) return
 				runtime.ready = true
 				runtime.error = null
 				// Activation is explicit in configuration; the merged owner starts
@@ -2892,8 +3030,11 @@ export function apply(ctx, config = {}) {
 				runtime.error = error?.message ?? String(error)
 				console.warn(`sidebar-agent: the agent could not start: ${runtime.error}`)
 			})
-			return () => {
+			return async () => {
+				runtime.shuttingDown = true
 				controller.abort()
+				await runtime.heartbeat?.close()
+				await runtime.store.tail
 				runtime.agent = null
 				runtime.ready = false
 				runtime.host = null
@@ -2921,7 +3062,9 @@ export function apply(ctx, config = {}) {
 		scoped.effect(() => scoped.on('session/event', (session, event) => {
 			handleDelegationSessionEvent(scoped, runtime, session, event)
 			handleAgentTurnEnd(runtime, session, event)
-			void runtime.pulseFeedReady?.then((feed) => feed?.handle?.(session, event))
+			// Supervised assignments already have one durable machine outcome path.
+			// Leave unrelated sponsor/pulse sessions on their existing behavior.
+			if (!runtime.heartbeat?.owns(session.id)) void runtime.pulseFeedReady?.then((feed) => feed?.handle?.(session, event))
 		}), 'sidebar-agent: delegation reports')
 
 		scoped.effect(() => scoped.on('agent/status', (payload) => {
@@ -2929,11 +3072,13 @@ export function apply(ctx, config = {}) {
 		}, { global: true }), 'sidebar-agent: gate drain on idle')
 
 		scoped.effect(() => {
-			const timer = setInterval(() => {
-				sweepDelegations(scoped, runtime)
-			}, STALL_SWEEP_MS)
+			// Heartbeat owns this lifecycle when enabled, with one deadline timer.
+			// The old 30s/30m watchdog remains distinct for explicitly disabled
+			// heartbeat profiles; it is not a second independent heartbeat timer.
+			if (settings.heartbeat.enabled) return () => runtime.heartbeat?.close()
+			const timer = setInterval(() => sweepDelegations(scoped, runtime), STALL_SWEEP_MS)
 			return () => clearInterval(timer)
-		}, 'sidebar-agent: delegation stall sweep')
+		}, 'sidebar-agent: supervision lifecycle')
 	})
 
 	// The Agent page's right panel is the supported editor because it overlays
@@ -2953,6 +3098,9 @@ export function apply(ctx, config = {}) {
 
 /** Behavior surface used by the package tests; no runtime code depends on it. */
 export const __internals = Object.freeze({
+	StateStore,
+	heartbeatObservation,
+	heartbeatBlocked,
 	settingsOf,
 	gateOf,
 	pendingQuestionOf,

@@ -73,6 +73,131 @@ function findByType(node, type) {
 	return null
 }
 
+function connectionHarness(getRemote) {
+	let time = 0, nextId = 0
+	const timers = new Map(), states = []
+	let snapshot = { status: 'idle', data: null, error: null }
+	const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
+	const controller = client.__internals.createChatConnection({
+		getRemote, t: key => key,
+		publish: value => { snapshot = { ...snapshot, ...value }; states.push(snapshot) },
+		now: () => time,
+		schedule: (callback, delay) => { const id = ++nextId; timers.set(id, { at: time + delay, callback }); return id },
+		cancel: id => timers.delete(id),
+	})
+	return { controller, states, get snapshot() { return snapshot }, get pending() { return timers.size }, flush,
+		async advance(ms) {
+			const end = time + ms
+			await flush()
+			while (true) {
+				const due = [...timers].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0]
+				if (!due) break
+				time = due[1].at; timers.delete(due[0]); due[1].callback(); await flush()
+			}
+			time = end; await flush()
+		},
+	}
+}
+
+test('first launch waits for the remote, then recovers without Retry or a stale error', async () => {
+	let remote, calls = 0
+	const h = connectionHarness(() => remote)
+	await h.controller.load()
+	assert.equal(h.snapshot.status, 'loading')
+	await h.advance(100)
+	assert.equal(h.states.some(s => s.status === 'error'), false)
+	remote = { status: async () => { calls++; return { ok: true, value: { title: 'Connected' } } } }
+	h.controller.connected(); await h.flush()
+	assert.equal(h.snapshot.status, 'ready')
+	assert.equal(h.snapshot.data.title, 'Connected')
+	assert.equal(h.snapshot.error, null)
+	assert.equal(calls, 1)
+	h.controller.dispose()
+})
+
+test('transient first status failure retries promptly without rendering an error', async () => {
+	let calls = 0
+	const h = connectionHarness(() => ({ status: async () => {
+		if (++calls === 1) throw new Error('Network unavailable')
+		return { ok: true, value: { ready: true } }
+	} }))
+	await h.controller.load()
+	await h.advance(149)
+	assert.equal(calls, 1)
+	assert.equal(h.snapshot.status, 'loading')
+	await h.advance(1)
+	assert.equal(calls, 2)
+	assert.equal(h.snapshot.status, 'ready')
+	assert.equal(h.states.some(s => s.status === 'error'), false)
+	assert.equal(h.pending, 0)
+	h.controller.dispose()
+})
+
+test('exhausted initial retries and permanent failures remain visible, not an infinite spinner', async () => {
+	let calls = 0
+	const h = connectionHarness(() => ({ status: async () => { calls++; throw new Error('Still offline') } }))
+	await h.controller.load(); await h.advance(4000)
+	assert.equal(calls, 4)
+	assert.equal(h.snapshot.status, 'error')
+	assert.equal(h.snapshot.error, 'Still offline')
+	assert.equal(h.pending, 0)
+	h.controller.dispose()
+	const denied = connectionHarness(() => ({ status: async () => ({ ok: false, error: { code: 'forbidden', message: 'Access denied' } }) }))
+	await denied.controller.load()
+	assert.equal(denied.snapshot.status, 'error')
+	assert.equal(denied.snapshot.error, 'Access denied')
+	assert.equal(denied.pending, 0)
+	denied.controller.dispose()
+})
+
+test('remote readiness during an in-flight failure queues recovery without overlapping reads', async () => {
+	let rejectFirst, concurrent = 0, maximum = 0
+	let remote = { status: () => { concurrent++; maximum = Math.max(maximum, concurrent); return new Promise((_, reject) => { rejectFirst = error => { concurrent--; reject(error) } }) } }
+	const h = connectionHarness(() => remote)
+	const first = h.controller.load()
+	remote = { status: async () => { concurrent++; maximum = Math.max(maximum, concurrent); concurrent--; return { ok: true, value: { title: 'Newest remote' } } } }
+	h.controller.connected()
+	rejectFirst(new Error('Old connection closed'))
+	await first; await h.flush()
+	assert.equal(h.snapshot.status, 'ready')
+	assert.equal(h.snapshot.data.title, 'Newest remote')
+	assert.equal(h.snapshot.error, null)
+	assert.equal(h.states.some(s => s.status === 'error'), false)
+	assert.equal(maximum, 1)
+	h.controller.dispose()
+})
+
+test('a missing remote and a hung first read both end the bounded connecting window', async () => {
+	for (const remote of [undefined, { status: () => new Promise(() => {}) }]) {
+		const h = connectionHarness(() => remote)
+		void h.controller.load()
+		await h.advance(4000)
+		assert.equal(h.snapshot.status, 'error')
+		assert.equal(h.snapshot.error, 'error.connecting')
+		assert.equal(h.pending, 0)
+		h.controller.dispose()
+	}
+})
+
+test('a first-read deadline surfaces failure without starting overlapping RPCs', async () => {
+	let finish, calls = 0
+	let remote = { status: () => { calls++; return new Promise(resolve => { finish = resolve }) } }
+	const h = connectionHarness(() => remote)
+	const first = h.controller.load()
+	remote = { status: async () => { calls++; return { ok: true, value: { ready: true } } } }
+	h.controller.connected()
+	await h.advance(4000)
+	assert.equal(h.snapshot.status, 'error')
+	await h.controller.load(true)
+	assert.equal(calls, 1)
+	finish({ ok: true, value: { stale: true } })
+	await first; await h.flush()
+	assert.equal(calls, 2)
+	assert.equal(h.snapshot.status, 'ready')
+	assert.equal(h.snapshot.data.stale, undefined)
+	h.controller.dispose()
+})
+
 test('the client registers a sidebar entry and the chat page', () => {
 	const registrations = []
 	const disposers = []

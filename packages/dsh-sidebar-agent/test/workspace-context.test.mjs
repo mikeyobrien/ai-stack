@@ -327,6 +327,15 @@ test('ordinary sessions and real tool-driven delegations keep their own context 
 	assert.ok(afterDelegate.tools.some((tool) => tool.name === 'delegate'))
 	assert.ok(!afterDelegate.tools.some((tool) => ['ask_user_question', 'exit_plan_mode'].includes(tool.name)))
 
+	// Completion is now durable idle-only followup, not foreground injection.
+	// Observe its supported delivery state before starting a new human turn.
+	await until(() => {
+		const status = h.service.heartbeatStatus()
+		assert.equal(status.error, null, JSON.stringify(status))
+		return status.targets?.some((target) => target.sessionId === child.id && target.lifecycle === 'completed')
+			&& status.queuedWake === 0
+	}, 'idle-admitted heartbeat completion')
+	await h.sidebar.whenIdle()
 	const reportTurn = await h.chat('Read the delegation report.')
 	assert.ok(reportTurn.messages.some((message) => message.source?.kind === 'delegation'
 		&& textOf(message).includes(child.id) && textOf(message).includes('Fixture reply.')))

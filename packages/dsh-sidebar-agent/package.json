@@ -28,6 +28,7 @@
     "judge.js",
     "decision-log.js",
     "pulse-feed.js",
+    "heartbeat.js",
     "machine-meta.js",
     "voice.js",
     "photo.js",

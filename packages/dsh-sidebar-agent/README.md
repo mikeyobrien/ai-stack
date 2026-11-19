@@ -38,7 +38,65 @@ accent; a stalled one uses the warning accent, its hover/header pill says `Stall
 the owner's status dot/label; there is no row-text status slot, so the state word lives in the
 hover/header pills and the accessible mark. Unrelated session spinners are unchanged.
 
-### Stall watchdog
+### HEARTBEAT supervision
+
+Enabled by default for tracked delegations, including `delegate({ agentPreset: "cordis", ... })`.
+Omitting `agentPreset` preserves the deployment default; explicit selection is resolved before
+workspace/session side effects. Existing model/tool/preset authorization and durable session identity
+remain in force.
+
+One owner-scoped supervision lane observes active assignments every **120 seconds** and uses a
+separate **300-second observable-milestone deadline**. The single deadline timer replaces the legacy
+watchdog timer when enabled. Quiet/unchanged checks do not call a model or emit messages. Artifact
+operation results and recognized test-command results are evidence; identical evidence, logs,
+polls, token streams and tool starts are not new milestones. This is not proof of useful work.
+Long-running tool waiting is reported distinctly. HEARTBEAT never cancels or resumes workers.
+
+Completion/failure/blocked outcomes queue a bounded machine-provenance followup immediately.
+Intent persistence is acknowledged before admission. A serialized `runMaintenance` claim parks it
+only at true idle with no already-queued human input, continued question, blocked/paused goal or
+foreground work in the way. The actual inbox input is flushed before a model-free followup marker
+latches its wake; the scoped pre-step filter rejects that marker before inference.
+The normal ingress/urgency/approval-answer path is not used. Terminal intent supersedes an obsolete
+stall for the same assignment; at most eight targets share a batch. Overlapping supervised sessions
+use this path instead of also emitting a pulse; unrelated sponsors retain their existing behavior.
+
+Per-owner heartbeat state lives under `<dataDir>/heartbeat/<owner-session-id>.json`. State writes
+reject on failure, fsync the replacement and containing directory, and leave the serialization lane
+usable. Heartbeat storage/admission faults latch with read-only error status rather than retrying
+forever. Unreadable/incompatible owner state fails closed instead of minting a replacement owner.
+Stable original message IDs are reconciled against raw inbox/user events, not text or a compacted
+conversation surface. Abrupt-crash pending inbox recovery uses a normal followup control marker that
+is filtered by a scoped pre-step listener before inference; it does not duplicate the original
+notification or create another model request. Conversation rollover creates a separate owner binding;
+old grants and pending intents are not transferred.
+
+**Known Host contract limitation:** normal Agent teardown cancels pending inbox items, and durable
+inbox cancellation records omit the cause (`user` versus `disposed`). HEARTBEAT preserves cancellation
+rather than silently resurrecting input, and exposes `canceledWakeCount`/`deliveryWarning`. Therefore
+notification processing across teardown *during admission* is not guaranteed. This acceptance gap
+requires Host cancellation provenance/pending-input lifecycle support or an explicit narrower recovery
+contract. There is a second Host boundary: a human followup arriving while an already-parked machine
+input is being flushed lands behind it in the ordinary FIFO. Existing human work is protected, but
+strict priority for arrivals during that checkpoint requires an atomic durable low-priority admission
+primitive; this plugin does not rewrite human queue entries. Neither characterization is an accepted
+completion guarantee. Durable admission is not an exactly-once transaction for model actions or external effects.
+
+Read-only `heartbeat_status` (coordinator tool) and `agent.heartbeatStatus()` (supported Remote) report
+enabled/ready, interval/deadline, last/next check, tracked/active counts, pending/parked admissions,
+error/cancellation warnings and up to 32 classification-only milestone/stall summaries. No transcript
+or command arguments are included in status.
+
+Native sessions are **not** discovered or adopted from workspace visibility. Explicit read-only
+observation grants are normal configuration, with exact `ownerId`, `sessionId`, `createdAt`,
+`agentPreset`, and bounded `assignmentRef` members in `heartbeat.observations`. Matching is checked
+against the real header and explicit configuration on recovery/admission. They are never inserted
+in the delegation-control registry. Enrollment starts at the current cursor, does not replay old
+reports, and leaves completed/paused/user-blocked work disarmed. A new task needs explicit assignment;
+revocation removes pending wakes. Defaults are `heartbeat: { enabled: true, intervalMs: 120000,
+stallMs: 300000, observations: [] }`; these are ordinary profile configuration, not composer controls.
+
+### Legacy stall watchdog (only when HEARTBEAT is disabled)
 
 The same global `session/event` subscription used for reports is the event seam: `turn/start` arms
 one delegated record, every delegated-session event postpones it, and `turn/end` disarms it. A single
@@ -106,7 +164,10 @@ until the mode is switched. The local Clef service is documented separately.
 | `dataDir` | `<DSH_HOME>/sidebar-agent` | Durable state and the agent's directory |
 | `provider` / `model` | deployment default | Route for the agent's own turns |
 | `reasoningEffort` | provider default | Effort for the agent's own turns |
-| `delegationStallMs` | `1800000` | No-activity threshold for an armed delegation turn |
+| `heartbeat.enabled` | `true` | Active-assignment supervision and durable idle-only machine wakes |
+| `heartbeat.intervalMs` / `heartbeat.stallMs` | `120000` / `300000` | Structural check interval / observable-milestone deadline |
+| `heartbeat.observations` | `[]` | Explicit exact-identity owner-bound read-only grants; no workspace adoption |
+| `delegationStallMs` | `1800000` | Legacy no-activity threshold, only when HEARTBEAT is disabled |
 | `delegationStallAutoCancel` | `false` | Opt-in keep-inbox cancel on stall; mark+notify only when false |
 | `pulse.sessions` | `[]` | Watched session ids whose turn completions feed this Agent; empty = off |
 | `pulse.minQuietSeconds` | `60` | Minimum spacing between Pulse digests; multiples coalesce |

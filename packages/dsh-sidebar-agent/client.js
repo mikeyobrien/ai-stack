@@ -1952,6 +1952,94 @@ window.__ModuleLoader__.load({
       ]);
     }
 
+    /** Initial connection is a bounded state, not a failed status request.
+     * Timers are injectable so tests exercise the same recovery controller. */
+    function createChatConnection({ getRemote, publish, t, mount = () => {}, now = Date.now,
+      schedule = setTimeout, cancel = clearTimeout }) {
+      const backoff = [150, 300, 600];
+      const graceMs = 4000;
+      let active = false, disposed = false, inFlight = false, queuedReady = false;
+      let hasData = false, terminal = false, failures = 0, started = 0;
+      let retryTimer, readTimer, lastError;
+      const clearRetry = () => { if (retryTimer !== undefined) cancel(retryTimer); retryTimer = undefined; };
+      const permanent = error => error?.connectionDeadline === true || error?.retryable === false
+        || [400, 401, 403, 404].includes(error?.status)
+        || ['unauthorized', 'forbidden', 'permission-denied', 'invalid-argument', 'validation'].includes(error?.code)
+        || /invalid server-response|unauthori[sz]ed|permission denied|forbidden/i.test(error?.message ?? '');
+      const surface = error => {
+        terminal = true;
+        clearRetry();
+        publish({ status: 'error', error: error?.message || t('error.read') });
+      };
+      const retry = delay => {
+        if (disposed || retryTimer !== undefined) return;
+        retryTimer = schedule(() => { retryTimer = undefined; void load(true); }, delay);
+      };
+      const failed = error => {
+        lastError = error;
+        if (disposed || !active || (queuedReady && !error?.connectionDeadline)) return;
+        if (hasData || terminal || permanent(error) || ++failures > backoff.length || now() - started >= graceMs) {
+          surface(error);
+        } else {
+          publish({ status: 'loading', error: null });
+          retry(Math.min(backoff[failures - 1], graceMs - (now() - started)));
+        }
+      };
+      const load = async (quiet = false) => {
+        if (disposed) return;
+        if (inFlight) return;
+        if (!active || !quiet) {
+          active = true; terminal = false; failures = 0; started = now(); lastError = undefined;
+          clearRetry();
+        } else if (retryTimer !== undefined) return;
+        if (!quiet || (!hasData && !terminal)) publish({ status: 'loading', error: null });
+        const remote = getRemote();
+        if (!remote) {
+          if (terminal || now() - started >= graceMs) surface(lastError ?? new Error(t('error.connecting')));
+          else { mount(); retry(Math.min(150, graceMs - (now() - started))); }
+          return;
+        }
+        inFlight = true;
+        let request;
+        let readSettled = false;
+        try {
+          // Bound a hung first read too. Later normal polls keep their existing RPC timeout.
+          request = Promise.resolve(remote.status());
+          request.then(() => { readSettled = true; }, () => { readSettled = true; });
+          const result = !hasData && !terminal ? await Promise.race([
+            request,
+            new Promise((_, reject) => { readTimer = schedule(() => reject(Object.assign(new Error(t('error.connecting')), { connectionDeadline: true })), Math.max(1, graceMs - (now() - started))); }),
+          ]) : await request;
+          if (disposed || queuedReady) return;
+          if (!result.ok) { failed(result.error); return; }
+          clearRetry(); hasData = true; failures = 0; terminal = false;
+          publish({ status: 'ready', data: result.value, error: null });
+        } catch (error) { failed(error); }
+        finally {
+          if (readTimer !== undefined) cancel(readTimer);
+          readTimer = undefined;
+          const finish = () => {
+            inFlight = false;
+            if (queuedReady && !disposed) { queuedReady = false; clearRetry(); void load(true); }
+          };
+          // A UI deadline is not cancellation of the underlying RPC. Keep the
+          // single-flight lock until that request settles, even after showing Retry.
+          if (request && !readSettled) request.then(finish, finish);
+          else finish();
+        }
+      };
+      return {
+        load, failed,
+        connected() {
+          if (!active || disposed) return;
+          clearRetry(); failures = 0; terminal = false; started = now();
+          publish({ status: hasData ? 'ready' : 'loading', error: null });
+          if (inFlight) queuedReady = true; else void load(true);
+        },
+        dispose() { disposed = true; clearRetry(); if (readTimer !== undefined) cancel(readTimer); },
+      };
+    }
+
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { en: EN }), 'sidebar-agent: locale');
       const t = ctx.locale.bind(NS);
@@ -1962,27 +2050,11 @@ window.__ModuleLoader__.load({
         store = { ...store, ...changes };
         for (const notify of listeners) notify();
       };
-      let inFlight = false;
       let timer;
+      let mountRemote = () => {};
       const POLL_MS = 1500;
-      const load = async (quiet = false) => {
-        if (inFlight) return;
-        inFlight = true;
-        if (!quiet) publish({ status: 'loading', error: null });
-        try {
-          if (!remote) throw new Error(t('error.connecting'));
-          const result = await remote.status();
-          if (!result.ok) {
-            publish({ status: 'error', error: result.error?.message || t('error.read') });
-            return;
-          }
-          publish({ status: 'ready', data: result.value, error: null });
-        } catch (error) {
-          publish({ status: 'error', error: error?.message || t('error.read') });
-        } finally {
-          inFlight = false;
-        }
-      };
+      const connection = createChatConnection({ getRemote: () => remote, publish, t, mount: () => mountRemote() });
+      const load = connection.load;
       const wake = () => {
         if (document.visibilityState === 'visible') load(true);
       };
@@ -2038,18 +2110,24 @@ window.__ModuleLoader__.load({
       };
       ctx.effect(() => {
         let disposed = false;
+        let mounting = false;
         let face;
-        Promise.resolve(ctx.remote.$mount(contribution())).then(() => {
-          if (disposed) return;
-          face = ctx.inject(['remote.agent'], (scoped) => {
-            remote = scoped.remote.agent;
-            if (listeners.size > 0) load(true);
-            void refreshDelegated();
-          });
-        }).catch((error) => {
-          if (!disposed) publish({ status: 'error', error: error?.message || t('error.read') });
-        });
-        return () => { disposed = true; remote = undefined; face?.dispose?.(); };
+        mountRemote = () => {
+          if (disposed || mounting || face || remote) return;
+          mounting = true;
+          Promise.resolve().then(() => ctx.remote.$mount(contribution())).then(() => {
+            if (disposed) return;
+            face = ctx.inject(['remote.agent'], (scoped) => {
+              remote = scoped.remote.agent;
+              connection.connected();
+              void refreshDelegated();
+            });
+          }).catch(error => {
+            if (!disposed) connection.failed(error);
+          }).finally(() => { mounting = false; });
+        };
+        mountRemote();
+        return () => { disposed = true; connection.dispose(); remote = undefined; face?.dispose?.(); };
       }, 'sidebar-agent: remote');
       ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
         name: 'main', key: PANEL_ID, locale: NS,
@@ -2101,7 +2179,7 @@ window.__ModuleLoader__.load({
         AgentChat, Composer, MessageRow, ToolRow, ActivityGroup, DelegationReport, ModelMenu,
         SettingsPanel, settingsFormOf, settingsPatchOf, telegramStateLabel,
         buildItems, parseReport, outcomeLabel, outcomeClass, toolPhrase, humanToolName,
-        modelLabel, effortLabel, delegatedSpinnerCss, CSS,
+        modelLabel, effortLabel, delegatedSpinnerCss, createChatConnection, CSS,
         DelegationTag, DelegationMark, useDelegated, useStalled,
       },
     };
