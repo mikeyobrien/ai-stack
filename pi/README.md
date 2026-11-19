@@ -4,8 +4,8 @@ Portable pi configuration for this machine.
 
 Tracked:
 
-- `settings.json` — default model/provider, theme, extension packages
-- `models.json` — provider and model definitions
+- `settings.json` — default model/provider (overridable via `PI_DEFAULT_PROVIDER` / `PI_DEFAULT_MODEL`), theme, extension packages
+- `models.json` — provider templates using `${PI_*_BASE_URL}` placeholders; `install.sh pi` expands them from the environment / `.env` and drops unconfigured optional providers
 - `npm/` — pi extension packages and lockfile
 - `themes/omarchy-system.json`
 - `extensions/` — user-authored extensions (see its README)

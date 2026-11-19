@@ -23,6 +23,32 @@ set -- "${ARGS[@]}"
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# Load optional gitignored .env without overriding already-exported env vars.
+load_dotenv() {
+  local env_file="$REPO/.env" line key val
+  [ -f "$env_file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in ''|\#*) continue ;; esac
+    [[ "$line" == export\ * ]] && line="${line#export }"
+    [[ "$line" == *=* ]] || continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    if [[ "$val" =~ ^\"(.*)\"$ ]] || [[ "$val" =~ ^\'(.*)\'$ ]]; then
+      val="${BASH_REMATCH[1]}"
+    fi
+    if [ -z "${!key+x}" ]; then
+      export "$key=$val"
+    fi
+  done < "$env_file"
+}
+
+load_dotenv
+
 install_dsh() {
   [ -n "$PROFILE" ] || die "set PROFILE to the profile name to install, e.g. PROFILE=meta ./install.sh dsh"
   command -v dsh  >/dev/null 2>&1 || die "dsh is not on PATH"
@@ -144,7 +170,8 @@ install_agents() {
 }
 
 install_pi() {
-  command -v npm >/dev/null 2>&1 || die "npm is not on PATH"
+  command -v npm  >/dev/null 2>&1 || die "npm is not on PATH"
+  command -v node >/dev/null 2>&1 || die "node is not on PATH"
 
   mkdir -p "$PI_AGENT_DIR/npm" "$PI_AGENT_DIR/extensions" \
            "$PI_AGENT_DIR/themes" "$PI_AGENT_DIR/skills"
@@ -152,18 +179,81 @@ install_pi() {
   local f
   for f in settings.json models.json; do
     [ -f "$PI_AGENT_DIR/$f" ] && cp -p "$PI_AGENT_DIR/$f" "$PI_AGENT_DIR/$f.bak-$STAMP"
-    cp "$REPO/pi/$f" "$PI_AGENT_DIR/$f"
   done
+
+  # Render models.json from environment placeholders; drop providers whose
+  # baseUrl resolves empty so unconfigured remote hosts stay out.
+  node - "$REPO/pi/models.json" "$PI_AGENT_DIR/models.json" <<'NODE'
+const fs = require('node:fs');
+const [srcPath, dstPath] = process.argv.slice(2);
+const expand = (input) => {
+  let out = input;
+  for (let i = 0; i < 6; i++) {
+    const next = out.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g, (_, name, fallback) => {
+      const val = process.env[name];
+      if (val !== undefined && val !== '') return val;
+      return fallback !== undefined ? fallback : '';
+    });
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+};
+const walk = (v) => {
+  if (typeof v === 'string') return expand(v);
+  if (Array.isArray(v)) return v.map(walk);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+    return out;
+  }
+  return v;
+};
+const doc = walk(JSON.parse(fs.readFileSync(srcPath, 'utf8')));
+if (doc.providers && typeof doc.providers === 'object') {
+  for (const [name, prov] of Object.entries(doc.providers)) {
+    if (!prov || typeof prov.baseUrl !== 'string' || prov.baseUrl.trim() === '') {
+      delete doc.providers[name];
+    }
+  }
+}
+fs.writeFileSync(dstPath, JSON.stringify(doc, null, 2) + '\n');
+NODE
+
+  # Render settings.json: apply PI_DEFAULT_PROVIDER / PI_DEFAULT_MODEL when set
+  # and preserve machine-local state (deviceId, extensionChangelogVersions).
+  node - "$REPO/pi/settings.json" "$PI_AGENT_DIR/settings.json" <<'NODE'
+const fs = require('node:fs');
+const [srcPath, dstPath] = process.argv.slice(2);
+const next = JSON.parse(fs.readFileSync(srcPath, 'utf8'));
+if (process.env.PI_DEFAULT_PROVIDER) next.defaultProvider = process.env.PI_DEFAULT_PROVIDER;
+if (process.env.PI_DEFAULT_MODEL) next.defaultModel = process.env.PI_DEFAULT_MODEL;
+if (fs.existsSync(dstPath)) {
+  try {
+    const prev = JSON.parse(fs.readFileSync(dstPath, 'utf8'));
+    if (prev.deviceId && !next.deviceId) next.deviceId = prev.deviceId;
+    if (prev.extensionChangelogVersions && !next.extensionChangelogVersions) {
+      next.extensionChangelogVersions = prev.extensionChangelogVersions;
+    }
+  } catch {}
+}
+fs.writeFileSync(dstPath, JSON.stringify(next, null, 2) + '\n');
+NODE
+
   cp "$REPO/pi/themes/omarchy-system.json" "$PI_AGENT_DIR/themes/omarchy-system.json"
   cp "$REPO/pi/npm/package.json" "$PI_AGENT_DIR/npm/package.json"
   [ -f "$REPO/pi/npm/package-lock.json" ] \
     && cp "$REPO/pi/npm/package-lock.json" "$PI_AGENT_DIR/npm/package-lock.json"
   ( cd "$PI_AGENT_DIR/npm" && npm install --no-audit --no-fund )
 
-  local ext
+  local ext dest_ext
   for ext in "$REPO"/pi/extensions/*.ts; do
     [ -f "$ext" ] || continue
-    ln -sfn "$ext" "$PI_AGENT_DIR/extensions/$(basename "$ext")"
+    dest_ext="$PI_AGENT_DIR/extensions/$(basename "$ext")"
+    if [ -f "$dest_ext" ] && [ ! -L "$dest_ext" ]; then
+      mv "$dest_ext" "$dest_ext.bak-$STAMP"
+    fi
+    ln -sfn "$ext" "$dest_ext"
   done
 
   # Share the mov-skills skills with pi, mirroring the provider: a folder

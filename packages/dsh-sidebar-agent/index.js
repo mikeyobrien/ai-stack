@@ -138,7 +138,7 @@ export const Config = z.object({
 	}).default({}),
 	stt: z.object({
 		enabled: z.boolean().default(false),
-		url: z.string().default('http://100.86.248.44:8891/v1/audio/transcriptions'),
+		url: z.string().default(process.env.DSH_VOICE_STT_URL?.trim() || 'http://127.0.0.1:8891/v1/audio/transcriptions'),
 		model: z.string().default('nvidia/parakeet-tdt-0.6b-v3'),
 		timeoutMs: z.number().default(15000),
 	}).default({}),
@@ -227,9 +227,10 @@ function miniAppOf(value) {
 function sttOf(value) {
 	const config = configValue(value)
 	const source = config !== null && typeof config === 'object' && !Array.isArray(config) ? config : {}
+	const defaultUrl = process.env.DSH_VOICE_STT_URL?.trim() || 'http://127.0.0.1:8891/v1/audio/transcriptions'
 	return {
 		enabled: source.enabled === true,
-		url: typeof source.url === 'string' && source.url !== '' ? source.url : 'http://100.86.248.44:8891/v1/audio/transcriptions',
+		url: typeof source.url === 'string' && source.url !== '' ? source.url : defaultUrl,
 		model: typeof source.model === 'string' && source.model !== '' ? source.model : 'nvidia/parakeet-tdt-0.6b-v3',
 		timeoutMs: Number.isFinite(source.timeoutMs) && source.timeoutMs > 0 ? source.timeoutMs : 15000,
 	}

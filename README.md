@@ -38,8 +38,7 @@ ai-stack/
 ## Install
 
 ```sh
-export SPARKS_API_KEY=...
-export DSH_SPARKS_BASE_URL=http://your-host:8888/v1
+cp .env.example .env  # set host URLs/keys (gitignored; or export directly)
 
 ./install.sh          # DSH profile + pi config + shared AGENTS.md
 ./install.sh dsh      # DSH only
@@ -77,8 +76,13 @@ to verify no agent has drifted.
 
 - **Secrets stay out**: `SPARKS_API_KEY` comes from the environment;
   `~/.dsh/.credentials.yaml` and pi's `auth.json`/`trust.json` are never copied.
-- **Host values are env-driven**: the profile reads `DSH_SPARKS_BASE_URL` with a
-  localhost default. Trusted hosts still come from `dsh web --trusted-host`.
+- **Host values are env-driven (12-factor)**: no hostnames, Tailscale IPs, or
+  keys are hardcoded. Copy `.env.example` to `.env` (gitignored) or export the
+  variables; `install.sh` loads `.env` without overriding exported vars,
+  renders `pi/models.json` (omitting unconfigured optional providers) and
+  `pi/settings.json`, while DSH reads `DSH_SPARKS_BASE_URL` / `DSH_VOICE_STT_URL`
+  and `sparks-lanes.ts` reads `PI_*_BASE_URL` / `models.json` at runtime.
+  Trusted hosts still come from `dsh web --trusted-host`.
 - **Paths are computed at install**: the profile ships `link:@REPO@/...` specs
   and `install.sh` rewrites them to this checkout's absolute path.
 - **Sessions and workspaces are not included**: they embed absolute cwds and

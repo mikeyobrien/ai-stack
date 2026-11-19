@@ -3,12 +3,95 @@
     "ollama": {
       "api": "openai-completions",
       "apiKey": "ollama",
-      "baseUrl": "http://127.0.0.1:11434/v1",
+      "baseUrl": "${PI_OLLAMA_BASE_URL:-http://127.0.0.1:11434/v1}",
+      "models": [
+        {
+          "contextWindow": 1048576,
+          "id": "glm-5.3-flash:cloud",
+          "input": [
+            "text",
+            "image"
+          ],
+          "maxTokens": 32768,
+          "name": "glm-5.3-flash:cloud",
+          "reasoning": true
+        }
+      ]
+    },
+    "reef": {
+      "api": "openai-completions",
+      "apiKey": "local",
+      "baseUrl": "${PI_REEF_BASE_URL:-}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "qwen3.8-27b",
+          "name": "Qwen3.8 27B",
+          "contextWindow": 262144,
+          "maxTokens": 16384,
+          "input": [
+            "text"
+          ],
+          "reasoning": false,
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
+        }
+      ]
+    },
+    "sparks": {
+      "api": "openai-completions",
+      "apiKey": "${PI_SPARKS_API_KEY:-local}",
+      "baseUrl": "${PI_SPARKS_BASE_URL:-${DSH_SPARKS_BASE_URL:-}}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "GLM-5.3-Flash",
+          "name": "GLM 5.3 Flash",
+          "contextWindow": 1048576,
+          "maxTokens": 32768,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        },
+        {
+          "id": "DeepSeek-V4.1-Flash-TF",
+          "name": "DeepSeek V4.1 Flash TensorFold",
+          "contextWindow": 1048576,
+          "maxTokens": 32768,
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        }
+      ]
+    },
+    "reef-strata": {
+      "api": "openai-completions",
+      "apiKey": "local",
+      "baseUrl": "${PI_STRATA_BASE_URL:-}",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "maxTokensField": "max_tokens"
+      },
       "models": [
         {
           "_launch": true,
-          "contextWindow": 1048576,
-          "id": "glm-5.3-flash:cloud",
+          "id": "qwen3.8-flash-next-unsloth-ud-iq3_xxs",
+          "name": "Strata Qwen3.8 Flash Next (IQ3_XXS)",
+          "contextWindow": 262144,
+          "maxTokens": 32768,
           "input": [
             "text",
             "image"
