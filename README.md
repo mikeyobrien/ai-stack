@@ -22,10 +22,12 @@ ai-stack/
 │   ├── themes/
 │   └── extensions/              # user pi extensions
 ├── scripts/
-│   └── sync-agents-md.sh        # symlinks ~/.agents/AGENTS.md to all agents
+│   ├── sync-agents-md.sh        # symlinks ~/.agents/AGENTS.md to all agents
+│   └── sync-skills.sh           # symlinks skills across all coding agents
 ├── skills/                      # user-level skills, distributed here
-│   ├── delegate/  first-principles/  html-report/  improve-readability/
-│   ├── one-pager/  prior-art/  research/  ui-ux-pass/  verified-delivery/
+│   ├── browser-learning/  delegate/  first-principles/  html-report/
+│   ├── improve-readability/  one-pager/  prior-art/  research/
+│   ├── ui-ux-pass/  verified-delivery/
 │   └── internal/                # flows composed from the others
 └── install.sh
 ```
@@ -40,10 +42,11 @@ ai-stack/
 ```sh
 cp .env.example .env  # set host URLs/keys (gitignored; or export directly)
 
-./install.sh          # DSH profile + pi config + shared AGENTS.md
+./install.sh          # DSH profile + pi config + shared AGENTS.md & skills
 ./install.sh dsh      # DSH only
-./install.sh pi       # pi + shared AGENTS.md
+./install.sh pi       # pi + shared AGENTS.md & skills
 ./install.sh agents   # shared AGENTS.md symlinks only
+./install.sh skills   # shared skills symlinks only
 
 dsh --profile meta
 ```
@@ -61,7 +64,7 @@ dependency wherever the checkout lives.
 | `agents/AGENTS.md` | `~/.agents/AGENTS.md`, symlinked across all coding agents via `scripts/sync-agents-md.sh` |
 | `dsh/profile/*` | `$DSH_HOME/profiles/$PROFILE/` |
 | `packages/*` | linked into that profile |
-| `skills/*` | your user-level skills; also symlinked into `~/.pi/agent/skills/` |
+| `skills/*` | symlinked into `~/.agents/skills/` and mirrored across all coding agents via `scripts/sync-skills.sh` |
 | `pi/settings.json`, `models.json` | `~/.pi/agent/` |
 | `pi/npm/package.json` | `~/.pi/agent/npm/`, then `npm install` |
 | `pi/extensions/*.ts` | symlinked into `~/.pi/agent/extensions/` |

@@ -148,13 +148,9 @@ NODE
   say "  dsh --profile $PROFILE"
 }
 
-link_pi_skill() {
-  local dest="$PI_AGENT_DIR/skills/$1"
-  if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-    say "pi: leaving existing $dest in place"
-    return
-  fi
-  ln -sfn "$2" "$dest"
+install_skills() {
+  "$REPO/scripts/sync-skills.sh"
+  say "shared skills -> $HOME/.agents/skills"
 }
 
 install_agents() {
@@ -256,24 +252,7 @@ NODE
     ln -sfn "$ext" "$dest_ext"
   done
 
-  # Share the mov-skills skills with pi, mirroring the provider: a folder
-  # carrying its own SKILL.md, or one level of children named after the child
-  # (internal/mov-mode -> mov-mode), so flows keep their runner. Existing real
-  # directories win.
-  local skill child
-  for skill in "$REPO"/skills/*/; do
-    case "$(basename "${skill%/}")" in .*) continue ;; esac
-    if [ -f "${skill}SKILL.md" ]; then
-      link_pi_skill "$(basename "${skill%/}")" "${skill%/}"
-      continue
-    fi
-    for child in "${skill}"*/; do
-      case "$(basename "${child%/}")" in .*) continue ;; esac
-      [ -f "${child}SKILL.md" ] || continue
-      link_pi_skill "$(basename "${child%/}")" "${child%/}"
-    done
-  done
-
+  install_skills
   install_agents
 
   say "pi configuration -> $PI_AGENT_DIR"
@@ -284,6 +263,7 @@ case "${1:-all}" in
   dsh)    install_dsh ;;
   pi)     install_pi ;;
   agents) install_agents ;;
-  -h|--help) say "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents]"; say "PROFILE names the profile the DSH half writes; it is required for all and dsh." ;;
-  *) die "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents]" ;;
+  skills) install_skills ;;
+  -h|--help) say "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents|skills]"; say "PROFILE names the profile the DSH half writes; it is required for all and dsh." ;;
+  *) die "usage: [PROFILE=<name>] $0 [all|dsh|pi|agents|skills]" ;;
 esac
